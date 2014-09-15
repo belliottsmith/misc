@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<project basedir="." default="jar" name="bes-misc">
+    <property name="debuglevel" value="source,lines,vars"/>
+
+    <!-- directory details -->
+    <property name="basedir" value="."/>
+    <property name="src" value="${basedir}/src/java"/>
+    <property name="dest.classes" value="${basedir}/classes"/>
+    <property name="dest.jar" value="${basedir}/jar"/>
+
+	<property name="source.version" value="1.7"/>
+	<property name="target.version" value="1.7"/>
+	
+    <target name="build">
+        <mkdir dir="${dest.classes}"/>
+        <javac fork="true"
+               debug="true" debuglevel="${debuglevel}"
+               destdir="${dest.classes}" includeantruntime="false" source="${source.version}" target="${target.version}"
+               memorymaximumsize="512M">
+            <src path="${src}"/>
+        </javac>
+    </target>
+
+    <target name="jar" depends="build">
+      <mkdir dir="${dest.jar}"/>
+      <jar jarfile="${dest.jar}/bes-misc.jar">
+        <fileset dir="${dest.classes}"/>
+        <manifest>
+          <attribute name="Implementation-Title" value="bes-misc"/>
+          <attribute name="Implementation-Version" value="0.1"/>
+          <attribute name="Implementation-Vendor" value="bes"/>
+        </manifest>
+      </jar>
+    </target>
+
+</project>

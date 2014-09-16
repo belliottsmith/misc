@@ -1,6 +1,11 @@
 { 
 	body = body $0 "\n";
 	$0 = tolower($0);
+	if (substr($0, 1, 5) == "date:") {
+		match($0, " [0-9][0-9][0-9][0-9] ");
+		thisyear = substr($0, RSTART + 1, 4);
+		skip = thisyear < year;
+	}
 	if (substr($0,1,8) == "author: ") {  committer = remap(parse($0, "author: ", ".*", "<")); } 
 	if (match($0,"patch by.*[;,]") > 0) { 
 		gsub(",", ";"); 
@@ -12,32 +17,35 @@
 	else if (match($0,"patch by.* and ") > 0) { author = remap(parse($0, "patch by", ".*", " and ")); author2 = remap(parse($0, "and", ".*", "")); }  
 	if (match($0, "ninja") > 0 && author == "") { author = committer; }
 	if (match($0,"[0-9]+ files? changed, [0-9]+ insertions\\(\\+\\), [0-9]+ deletions\\(\\-\\)") > 0) { 
-		additions = parseInt($0, "insertions");
-		deletions = parseInt($0, "deletions");
-		committer_c[committer] += 1;
-		committer_a[committer] += additions;
-		committer_d[committer] += deletions;
-		if (author == "")
+		if (!skip)
 		{
-			unknown_author_c[committer] += 1;
-			unknown_author_a[committer] += additions;
-			unknown_author_d[committer] += deletions;
-		}
-		else
-		{
-			author_c[author] += 1;
-			author_a[author] += additions;
-			author_d[author] += deletions;
-			if (author2 != "")
+			additions = parseInt($0, "insertions");
+			deletions = parseInt($0, "deletions");
+			committer_c[committer] += 1;
+			committer_a[committer] += additions;
+			committer_d[committer] += deletions;
+			if (author == "")
 			{
-				author_c[author2] += 1;
-				author_a[author2] += additions;
-				author_d[author2] += deletions;
+				unknown_author_c[committer] += 1;
+				unknown_author_a[committer] += additions;
+				unknown_author_d[committer] += deletions;
 			}
+			else
+			{
+				author_c[author] += 1;
+				author_a[author] += additions;
+				author_d[author] += deletions;
+				if (author2 != "")
+				{
+					author_c[author2] += 1;
+					author_a[author2] += additions;
+					author_d[author2] += deletions;
+				}
+			}
+			reviewer_c[reviewer] += 1;
+			reviewer_a[reviewer] += additions;
+			reviewer_d[reviewer] += deletions;
 		}
-		reviewer_c[reviewer] += 1;
-		reviewer_a[reviewer] += additions;
-		reviewer_d[reviewer] += deletions;
 		author = ""; reviewer = ""; committer = ""; body = ""; author2 = "";
 	}
 }

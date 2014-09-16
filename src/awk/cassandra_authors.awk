@@ -61,7 +61,6 @@ function remap(name) {
 		name = substr(name, 1, RSTART - 1); 
 		return remap(name);
 	}
-	if (substr(name, 1, 8) == "sylvain") return "sylvain";
 	if (name == "belliottsmith") return "benedict";
 	if (name == "belliotsmith") return "benedict";
 	if (name == "brandonwilliams") return "brandon";
@@ -73,6 +72,8 @@ function remap(name) {
 	if (name == "t") return "jake";
 	if (name == "vparthasarathy") return "vijay";
 	if (name == "vijay2win") return "vijay";
+	if (name == "yuki") return "yukim";
+	if (name == "joshua") return "josh";
 	return name;
 }
 function parseInt(s, suffix) {

@@ -65,11 +65,13 @@ function remap(name) {
 	if (name == "belliotsmith") return "benedict";
 	if (name == "brandonwilliams") return "brandon";
 	if (name == "bes") return "benedict";
-	if (name == "pcmanus") return "slebresne";
+	if (name == "pcmanus") return "sylvain";
+	if (name == "slebresne") return "sylvain";
 	if (name == "aleksey") return "iamaleksey";
 	if (name == "ayeschenko") return "iamaleksey";
 	if (name == "pyaskevich") return "xedin";
 	if (name == "t") return "jake";
+	if (name == "tjake") return "jake";
 	if (name == "vparthasarathy") return "vijay";
 	if (name == "vijay2win") return "vijay";
 	if (name == "yuki") return "yukim";

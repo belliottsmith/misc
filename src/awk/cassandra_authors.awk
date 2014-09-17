@@ -1,3 +1,4 @@
+#! /usr/bin/gawk -f
 BEGIN {
 	ticket = "";
 }

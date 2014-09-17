@@ -73,6 +73,7 @@ function remap(name) {
 	if (name == "belliottsmith") return "benedict";
 	if (name == "belliotsmith") return "benedict";
 	if (name == "brandonwilliams") return "brandon";
+	if (name == "driftx") return "brandon";
 	if (name == "bes") return "benedict";
 	if (name == "pcmanus") return "sylvain";
 	if (name == "slebresne") return "sylvain";
@@ -102,13 +103,14 @@ function parse(s, prefix, find, suffix) {
 function statsout(type, counts, additions, deletions, tickets) {
 	print(type ":");
 	n = asorti(additions, sorted, "cmp_val_desc");
+	sumcounts = 0; sumadditions = 0; sumdeletions = 0;
 	for (i = 1; i <= n ; i++)
 	{
 		name = sorted[i];
-		bigtickets = ""
+		bigtickets = "";
 		if (isarray(tickets)) {
 			n2 = asorti(tickets[name], sorted2, "cmp_val_desc");
-			for (j = 1 ; j <= (n2 > 5 ? 5 : n2) ; j++)
+			for (j = 1 ; j <= n2 ; j++)
 			{
 				ticket = sorted2[j];
 				count = tickets[name][ticket];
@@ -116,13 +118,16 @@ function statsout(type, counts, additions, deletions, tickets) {
 					bigtickets = sprintf("%s, %s:%4s", bigtickets, ticket, count);
 				}
 			}
-			if (bigtickets != "") { bigtickets = substr(bigtickets, 3); }
+			if (bigtickets != "") { bigtickets = "(" substr(bigtickets, 3) ")"; }
 		}
-		if (additions[name] > 100 && counts[name] > 2) {
-			printf("%16s: %6s changes, %6s+, %6s-    %s\n", name, counts[name], additions[name], deletions[name], "(" bigtickets ")");
-			#printf("%s: " name ": " counts[name] " changes, " additions[name] "+, " deletions[name] "- (" bigtickets ")");
+		if (int(additions[name]) > 100 && counts[name] > 2) {
+			printf("%16s: %6s changes, %6s+, %6s-    %s\n", name, counts[name], additions[name], deletions[name], bigtickets);
+			sumcounts += counts[name];
+			sumadditions += additions[name];
+			sumdeletions += deletions[name];
 		}
 	}
+	printf("%16s: %6s changes, %6s+, %6s-\n", "total", sumcounts, sumadditions, sumdeletions);
 	print("");
 }
 function cmp_val_desc(i1, v1, i2, v2)

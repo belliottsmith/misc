@@ -118,7 +118,7 @@ function statsout(type, counts, additions, deletions, tickets) {
 					bigtickets = sprintf("%s, %s:%4s", bigtickets, ticket, count);
 				}
 			}
-			if (bigtickets != "") { bigtickets = "(" substr(bigtickets, 3) ")"; }
+			if (length(bigtickets) > 0) { bigtickets = "(" substr(bigtickets, 3) ")"; }
 		}
 		if (int(additions[name]) > 100 && counts[name] > 2) {
 			printf("%16s: %6s changes, %6s+, %6s-    %s\n", name, counts[name], additions[name], deletions[name], bigtickets);

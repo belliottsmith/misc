@@ -1,0 +1,1 @@
+grep -B 1 -E "datetime='$2" issues.apache.org/jira/browse/CASSANDRA-$1 | grep -E '<a class="user-hover user-avatar" rel="[^"]+" id="commentauthor' | sed -r 's@.*"user-hover user-avatar" rel="([^"]*)" id="commentauthor.*@\1@g' | sort | uniq -c

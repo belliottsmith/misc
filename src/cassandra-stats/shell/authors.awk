@@ -1,4 +1,5 @@
 #! /usr/bin/gawk -f
+# usage: (pushd <git root> ; git log --stat src/java tools/stress/src ; popd) | ./cassandra_authors.awk -v year=<year>
 BEGIN {
 	ticket = "";
 }
@@ -11,14 +12,14 @@ BEGIN {
 		skip = thisyear < year;
 	}
 	if (substr($0,1,8) == "author: ") {  committer = remap(parse($0, "author: ", ".*", "<")); } 
-	if (match($0,"patch by.*[;,]") > 0) { 
+	if (match($0,"patch by.* and ") > 0) { author = remap(parse($0, "patch by", ".*", " and ")); author2 = remap(parse($0, "and", ".*", "")); }
+	else if (match($0,"patch by.*[;,]") > 0) { 
 		gsub(",", ";"); 
 		author = remap(parse($0, "patch by", ".*", ";")); 
 		if (match($0,"reviewed by.*for") > 0) { 
 			reviewer = remap(parse($0, "reviewed by", ".*", "for")); 
 		}
 	}
-	else if (match($0,"patch by.* and ") > 0) { author = remap(parse($0, "patch by", ".*", " and ")); author2 = remap(parse($0, "and", ".*", "")); }
 	if (match($0, "cassandra[- ][0-9]{4}") > 0) { ticket = parse($0, "cassandra.", "[0-9]{4}", ""); }
 	if (match($0, "ninja") > 0 && author == "") { author = committer; }
 	if (match($0,"[0-9]+ files? changed, [0-9]+ insertions\\(\\+\\), [0-9]+ deletions\\(\\-\\)") > 0) { 
@@ -32,22 +33,26 @@ BEGIN {
 			committer_t[committer][ticket] = additions;
 			if (author == "")
 			{
-				unknown_author_c[committer] += 1;
+				if (unknown_author_t[committer][ticket] == 0)
+				{ unknown_author_c[committer] += 1; }
 				unknown_author_a[committer] += additions;
 				unknown_author_d[committer] += deletions;
+				unknown_author_t[committer][ticket] += additions;
 			}
 			else
 			{
-				author_c[author] += 1;
+				if (author_t[author][ticket] == 0)
+				{ author_c[author] += 1; }
 				author_a[author] += additions;
 				author_d[author] += deletions;
-				author_t[author][ticket] = additions;
+				author_t[author][ticket] += additions;
 				if (author2 != "")
 				{
-					author_c[author2] += 1;
+					if (author_t[author2][ticket] == 0)
+					{ author_c[author2] += 1; }
 					author_a[author2] += additions;
 					author_d[author2] += deletions;
-					author_t[author2][ticket] = additions;
+					author_t[author2][ticket] += additions;
 				}
 			}
 			reviewer_c[reviewer] += 1;
@@ -63,6 +68,8 @@ END {
 	statsout("author", author_c, author_a, author_d, author_t);
 	statsout("unknown author", unknown_author_c, unknown_author_a, unknown_author_d, unknown_author_t);
 	statsout("reviewer", reviewer_c, reviewer_a, reviewer_d, reviewer_t);
+	bigticketsout("big tickets", 300, author_a, author_t);
+	bigticketsout("unknown author tickets", 0, unknown_author_a, unknown_author_t);
 }
 function remap(name) {
 	if (match(name, " ") > 0) 
@@ -100,6 +107,29 @@ function parse(s, prefix, find, suffix) {
 	gsub(" +$", "", part);
 	return part;
 }
+function bigticketsout(type, threshold, additions, tickets) {
+	print(type ":");
+	n = asorti(additions, sorted, "cmp_val_desc");
+	for (i = 1; i <= n ; i++)
+	{
+		name = sorted[i];
+		if (isarray(tickets)) {
+			n2 = asorti(tickets[name], sorted2, "cmp_val_desc");
+			print("  " name);
+			for (j = 1 ; j <= n2 ; j++)
+			{
+				ticket = sorted2[j];
+				count = tickets[name][ticket];
+				if (threshold == 0 || (ticket != "" && count >= threshold)) {
+					if (ticket == "") { ticket = "??" ; title = "" } else {"./ticket-title " ticket | getline title }
+					printf("        %s (%4s+): %s\n", ticket, count, title);
+				}
+			}
+			if (length(bigtickets) > 0) { bigtickets = "(" substr(bigtickets, 3) ")"; }
+		}
+	}
+	print("");
+}
 function statsout(type, counts, additions, deletions, tickets) {
 	print(type ":");
 	n = asorti(additions, sorted, "cmp_val_desc");
@@ -114,7 +144,7 @@ function statsout(type, counts, additions, deletions, tickets) {
 			{
 				ticket = sorted2[j];
 				count = tickets[name][ticket];
-				if (ticket != "" && int(count) >= 500) {
+				if (ticket != "" && int(count) >= 300) {
 					bigtickets = sprintf("%s, %s:%4s", bigtickets, ticket, count);
 				}
 			}

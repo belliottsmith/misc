@@ -1,0 +1,8 @@
+mkdir -p "issues.apache.org/jira/browse"
+pids=""
+for i in {1..7} ; do 
+  str=`bash -c "echo https://issues.apache.org/jira/browse/CASSANDRA-{${i}000..${i}999}"`; 
+  pid=`bash -c "wget -P issues.apache.org/jira/browse https://issues.apache.org/jira/browse/CASSANDRA-{${i}000..${i}999}" > /dev/null & echo $!`
+  pids="$pids $!"; 
+done
+wait $pids

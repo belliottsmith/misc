@@ -1,0 +1,7 @@
+if [ $# -ne 1 ] ; then echo "usage: mentions <year regex>" ; exit 1; fi
+for j in {3..7}; do
+  for i in `bash -c "echo {${j}000..${j}999}"` ; do
+    ./ticket-mentions $i $1 | ./torow.awk -v ticket=",CASSANDRA-$i"
+  done
+done > mentions.csv
+./summarise.awk -F , -v mentions=true mentions.csv > mentions.received

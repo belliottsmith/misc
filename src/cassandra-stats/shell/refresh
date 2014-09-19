@@ -1,0 +1,1 @@
+wget -r -l 1 --accept-regex "https://issues.apache.org/jira/browse/CASSANDRA-[0-9][0-9][0-9][0-9]" "https://issues.apache.org/jira/issues/?jql=project%20%3D%20cassandra%20AND%20updateddate%20%3E%20startOfMonth%28%29%20ORDER%20BY%20updated%20DESC"

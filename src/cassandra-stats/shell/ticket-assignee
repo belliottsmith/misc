@@ -1,0 +1,1 @@
+grep -E '<span class="user-hover" id="issue_summary_assignee_' issues.apache.org/jira/browse/CASSANDRA-$1 | sed -r 's@.*<span class="user-hover" id="issue_summary_assignee_([^"]+)".*@\1@g'

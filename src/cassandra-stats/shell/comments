@@ -2,7 +2,7 @@ if [ $# -ne 1 ] ; then echo "usage: comments <year regex>" ; exit 1; fi
 for j in {3..7}; do
   for i in `bash -c "echo {${j}000..${j}999}"` ; do
     row=`./ticket-comments $i $1 | ./torow.awk -v ticket=CASSANDRA-$i -v div=2`
-    if [ "$row" != "CASSANDRA-$i" ] ; then assignee=`./ticket-assignee issues.apache.org/jira/browse/CASSANDRA-$i` ; echo "${assignee},${row}" ; fi
+    if [ "$row" != "CASSANDRA-$i" ] ; then assignee=`./ticket-assignee $i` ; watchers=`./ticket-watchers $i`; echo "${assignee},${watchers},${row}" ; fi
   done
 done > comments.csv
 ./summarise.awk -F , -v assignee=true comments.csv > comments.received

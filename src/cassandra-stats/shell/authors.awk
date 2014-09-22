@@ -68,7 +68,7 @@ END {
 	statsout("author", author_c, author_a, author_d, author_t);
 	statsout("unknown author", unknown_author_c, unknown_author_a, unknown_author_d, unknown_author_t);
 	statsout("reviewer", reviewer_c, reviewer_a, reviewer_d, reviewer_t);
-	bigticketsout("big tickets", 300, author_a, author_t);
+	bigticketsout("big tickets", 250, author_a, author_t);
 	bigticketsout("unknown author tickets", 0, unknown_author_a, unknown_author_t);
 }
 function remap(name) {
@@ -87,6 +87,8 @@ function remap(name) {
 	if (name == "aleksey") return "iamaleksey";
 	if (name == "ayeschenko") return "iamaleksey";
 	if (name == "pyaskevich") return "xedin";
+	if (name == "jbellis") return "jonathan";
+	if (name == "marcuse,") return "marcuse";
 	if (name == "t") return "jake";
 	if (name == "tjake") return "jake";
 	if (name == "vparthasarathy") return "vijay";
@@ -114,18 +116,19 @@ function bigticketsout(type, threshold, additions, tickets) {
 	{
 		name = sorted[i];
 		if (isarray(tickets)) {
+			first = 1;
 			n2 = asorti(tickets[name], sorted2, "cmp_val_desc");
-			print("  " name);
 			for (j = 1 ; j <= n2 ; j++)
 			{
 				ticket = sorted2[j];
 				count = tickets[name][ticket];
-				if (threshold == 0 || (ticket != "" && count >= threshold)) {
-					if (ticket == "") { ticket = "??" ; title = "" } else {"./ticket-title " ticket | getline title }
+				title = "";
+				if (threshold == 0 || (ticket != "" && int(count) >= threshold)) {
+					if (ticket == "") { ticket = "??" } else { cmd= "./ticket-title " ticket; cmd | getline title; close(cmd); }
+					if (first) { print("  " name); first = 0;}
 					printf("        %s (%4s+): %s\n", ticket, count, title);
 				}
 			}
-			if (length(bigtickets) > 0) { bigtickets = "(" substr(bigtickets, 3) ")"; }
 		}
 	}
 	print("");
@@ -144,7 +147,7 @@ function statsout(type, counts, additions, deletions, tickets) {
 			{
 				ticket = sorted2[j];
 				count = tickets[name][ticket];
-				if (ticket != "" && int(count) >= 300) {
+				if (ticket != "" && int(count) >= 250) {
 					bigtickets = sprintf("%s, %s:%4s", bigtickets, ticket, count);
 				}
 			}

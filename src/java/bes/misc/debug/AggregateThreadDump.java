@@ -17,6 +17,7 @@ public class AggregateThreadDump
     static final Pattern TRACE = Pattern.compile("\\s*" +
                                                  "(java\\.lang\\.Thread\\.State: " +
                                                  "|- parking to wait for  <[0-9a-fx]+>" +
+                                                 "|- waiting on <[0-9a-fx]+>" +
                                                  "|- locked <[0-9a-fx]+>" +
                                                  "|at " +
                                                  ").*");

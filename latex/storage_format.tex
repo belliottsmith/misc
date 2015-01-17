@@ -1,0 +1,216 @@
+\documentclass[fleqn]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage{listings}
+\usepackage{color}
+\usepackage{xcolor}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{setspace}
+\usepackage{multirow}
+\usepackage{algorithm}
+\usepackage{xpatch}
+\let\algIf\If
+\usepackage{zed-csp}
+\let\If\algIf
+\usepackage[noend]{algpseudocode}
+
+\makeatletter
+\def\BState{\State\hskip-\ALG@thistlm}
+\xpatchcmd{\algorithmic}{\itemsep\z@}{\itemsep=0.5ex plus1pt}{}{}
+\algnewcommand{\LineComment}[1]{\Statex \hskip\ALG@thistlm #1}
+\makeatother
+
+\title{Cassandra Storage Format\\Proposal for 3.1\\Version 1}
+\author{Benedict Elliott Smith}
+\date{January 2015}
+
+\begin{document}
+
+\maketitle
+
+\scriptsize
+\section{Introduction}
+
+The basic idea is that we abstract the sstable data model into a number of pluggable components, 
+with some associated concepts.
+\\
+\paragraph{Definitions}
+\begin{itemize}
+  \item (Column) $Group_N$\\[2pt]
+    A subset of the columns defined on the table, that are stored together in the. 
+     corresponding $DataFile_N$ by default there is one group containing all columns, 
+     but rarely accessed columns or columnar layouts may be separated into their own group.
+  \item $BufferLimit$\\[2pt]
+    An sstable represents an ordered collection of partitions, however this doesn't
+    actually require the data be in order on disk. For linear scan performance we want it
+    to be \emph{almost} in order, and this parameter controls how flexible we are.
+    This specifies the maximum amount of data we are permitted to require to buffer, 
+    when performing such a linear scan, in order to yield partitions in order.
+\end{itemize}
+
+\paragraph{Components}
+\begin{itemize}
+  \item $ValueStore_N$\\[2pt]
+    One per $Group_N$ per partition. A sequential chunk of bytes that combines an associated row
+    key, retrieved from the row index, with the desired column to retrieve the column's value.
+    the row keys should be short
+  \item $RowIndex$\\[2pt]
+    One per partition, storing the cql row identifiers / clustering columns, and mapping
+    them to (row) keys for the associated value stores 
+  \item $PartitionIndex$\\[2pt]
+    performs a translation from partition key to the set of blocks possibly containing row indexes for the key 
+\end{itemize}
+
+\paragraph{Notes}
+\begin{itemize}
+  \item Dynamic Block Size\\[2pt]
+    Given our primarily hash based partitioning, we will approach optimal behaviour the
+    fewer partitions we need to retrieve in a single IO to answer a query, especially on SSDs. 
+    whether or not we change the block size in a given file, we should at least tailor 
+    the block size based on the 
+\end{itemize}
+  - 
+
+\paragraph{Notation Key}
+\subparagraph{}
+\begin{tabular}{l l}
+$X \Leftarrow Y$ & Write/Add/Append $Y$ To $X$\\
+$X \dashleftarrow Y$ & Read $X$ From $Y$\\
+$X \gets Y$ & Set $X$ to $Y$\\
+$\langle A,B \rangle$ & A tuple containing the values $A$ and $B$\\
+$\{Item | Constraint\}$ & The set of all $Item$ produced by $Constraint$\\
+$S_N$ & $\equiv \{S_n | n \in N\}$\\
+$Stmt_x | \forall x \in X$ & Execute statement $S$ for each $x$ in $X$\\
+\end{tabular}
+
+\begin{algorithm}
+\scriptsize
+\caption{Writing}
+\begin{algorithmic}[1]
+\Procedure{Write}{}
+\State $ColGroup \gets \{c \mapsto n \mid \forall c \in Group_{n}, \forall n \in N \}$
+\State $ColId_{n} \gets \{c \mapsto i \mid \forall c, d \in G, d < c \implies d \mapsto j \wedge j < i \} \mid \forall n \in N, G \equiv Group_{n}$
+\State $Metadata \Leftarrow ColGroup$
+\State $Metadata \Leftarrow ColId$
+\For{$p \gets Partitions$} 
+ \State $RowIndex \gets $ \Call{New}{}
+ \State $ValueStore_{n} \gets $ \Call{New}{} $ \mid \forall n \in N$
+ \State $PartitionEpoch \gets \min \{v.timestamp \mid v \in r.Values, r \in p.Rows\}$
+ \For{$r \gets p.Rows$}
+   \State $RowEpoch \gets \min \{v.timestamp \mid v \in r.Values\}$
+   \State $EpochDelta \gets RowEpoch - PartitionEpoch$
+   \State $RowIndex \Leftarrow \langle r.RowKey \mapsto \langle EpochDelta, \{ v.Pos \mid \forall v \in ValueStore_{N} \}\rangle \rangle $ 
+   \State $Values_{n} \gets \{ ColId(c) \mapsto r.Values(c) \mid \forall c \in Group_{n} \} \mid \forall n \in N$
+   \State $v.Time \gets v.Time - RowEpoch \mid \forall v \in \mathbf{dom}(Values_{n}), \forall n \in N$
+   \State $ ValueStore_{n} \Leftarrow Values_{N} $
+ \EndFor
+ \State $Pos_{n} \gets DataFile_{n}.Pos | \forall n \in N$
+ \State $Buffer \Leftarrow \langle p.PartitionKey, PartitionEpoch, RowIndex, ValueStore_{N}, Pos_{N} \rangle$
+ \State $Distance \gets \sum\limits_{n=0}^{N} (DataFile_{n}.pos - \min\limits_{\forall b \in Buffer} b.Pos_{n}) $
+ \If {$Distance \geq BufferLimit$}
+   \State $Flush \gets$ \Call{Select}{$Buffer$}
+   \State \Call{Flush}{$Flush, PartitionIndex, DataFile_{N}$}
+   \State $Buffer \gets Buffer \setminus Flush$
+ \EndIf
+\EndFor
+\State \Call{Flush}{$Buffer, PartitionIndex, DataFile_{N}$}
+\EndProcedure
+\Procedure{Flush}{$Buffer, PartitionIndex, DataFile_{N}$}
+   \For{$\langle PartitionKey, PartitionEpoch, RowIndex, ValueStore_{N} \rangle \gets Buffer$}
+    \State $PartitionIndex \Leftarrow \langle PartitionKey \mapsto DataFile_{0}.Pos \rangle $
+    \State $DataFile_{0} \Leftarrow \langle PartitionEpoch, PartitionKey \rangle$
+    \State $Pos_{n} \gets DataFile_{n}.Pos \mid \forall n \in N$
+    \State $Pos_{0} \gets Pos_0 + RowIndex.Length$
+    \State $DataFile_{0} \Leftarrow Pos_{N}$
+    \State $DataFile_{0} \Leftarrow RowIndex$
+    \State $DataFile_{n} \Leftarrow ValueStore_{n} \mid \forall n \in N$
+   \EndFor
+\EndProcedure
+\Function{Select}{$Buffer$}
+\State $Selection \gets$ ?
+\Ensure $Selection \subseteq Buffer$
+\Ensure $s \in Selection \cdot s.Pos = \min\limits_{\forall b \in Buffer} b.Pos_{n}$
+\Ensure ($\exists k \cdot \sum\limits_{s \in Selection} s.Size_{n} \approx k \times PageSize) \mid \forall n \in N $
+\Ensure Future calls to \Call{Select}{} can also meet criteria
+\State \Return $Selection$
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+\scriptsize
+\caption{Reading}
+\begin{algorithmic}[2]
+\Function{Read}{$PartitionKey, Cols, RowKeys$}
+\State $ColGroup_{N} \dashleftarrow Metadata$
+\State $ColId_{N} \dashleftarrow Metadata$
+\State $ReadGroup_N \gets $ \Call{ReadGroups}{$Cols, GolGroup_N$}
+\State $Candidates \gets $\Call{Lookup}{$PartitionIndex, PartitionKey$}
+\For{$Position \gets Candidates$}
+ \State \Call{Seek}{$DataFile_{0}, Position$}
+ \State $\langle PartitionEpoch, CandidateKey \rangle \dashleftarrow DataFile_{0}$
+ \If{$PartitionKey = CandidateKey$} 
+  \State \Return \Call{ReadPartition}{$PartitionEpoch, ReadGroup_N, ColId_N$}
+ \EndIf
+\EndFor
+\Return \textbf{nil}
+\EndFunction
+
+\Function{ReadGroups}{$Cols, ColGroup_N$}
+\State $ReadGroup_{n} \gets ColGroup_n(Cols)$
+\While{$ \exists n \cdot Read_{n} \subseteq (Read_{N} \setminus ReadGroup_{n}) $}
+ \State $ReadGroup_{n} \gets \emptyset$
+\EndWhile
+\While{$ \exists n,m \in ReadGroup_{N} \cdot Read_{n} \cap ReadGroup_{m} \neq \emptyset $}
+ \State $ReadGroup_{n} \gets ReadGroup_{n} \setminus Read_{m}$
+\EndWhile
+\Return $ReadGroup_N$
+\EndFunction
+
+\Function{ReadPartition}{$PartitionEpoch, ReadGroup_N, ColId_N$}
+\State $Partition, RowIndex, ValueStore \gets $ \Call{New}{}
+\State $Pos_N \dashleftarrow DataFile_0$
+\State $RowIndex \Leftarrow DataFile_0$
+\State $ValueStore_n \Leftarrow \langle DataFile_n,Pos_n \rangle mid \forall n \in N$
+\For{$RowKey \gets RowKeys$}
+ \State $Row \gets $ \Call{New}{}
+ \State $Pos_N, RowEpoch \gets$ \Call{Read}{$RowIndex, RowKey, PartitionEpoch$}
+ \For{$n \gets N \cdot ReadGroup_n \neq \emptyset$}
+  \State $Row \Leftarrow $ \Call{Read}{$ValueStore, ColId_n(ReadGroup_n), Pos_n, RowEpoch$}
+ \EndFor
+ \State $Partition \Leftarrow Row$
+\EndFor
+\Return $Partition$
+\EndFunction
+
+\Function{Lookup}{$PartitionIndex, PartitionKey$}
+\State \Return All positions possibly containing $PartitionKey$
+\EndFunction
+\Function{Read}{$RowIndex, RowKey, PartitionEpoch$}
+\State \Return $\langle$Offsets in each $DataFile$ at which $ValueStore$ persisted $RowKey$, $RowEpoch \rangle$
+\EndFunction
+\Function{Read}{$ValueStore, ColIds, Pos, RowEpoch$}
+\State \Return Values for the $ColIds$ persisted by $ValueStore$ at relative $Pos$
+\EndFunction
+
+\Procedure{Scan}{$Start, End, Cols, RowKeys, Out$}
+\State $ColGroup_{N} \dashleftarrow Metadata$
+\State $ColId_{N} \dashleftarrow Metadata$
+\State $Read_N \gets $ \Call{ReadGroups}{$Cols, GolGroup_N$}
+\For{$Position \gets $\Call{Range}{$PartitionIndex, Start, End$}}
+ \State \Call{Seek}{$DataFile_{0}, Position$}
+ \State $\langle PartitionEpoch, CandidateKey \rangle \dashleftarrow DataFile_{0}$
+ \State $Buffer \Leftarrow$ \Call{ReadPartition}{$PartitionEpoch$}
+ \If{$Buffer.Length \geq BufferLimit$}
+  \State $Out \Leftarrow \min(Buffer)$
+ \EndIf
+\EndFor
+\EndProcedure
+\Function{Range}{$PartitionIndex, Start, End$}
+\State \Return ${Key.Pos \mid \forall Key \in PartitionIndex, Start <= Key < End }$
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+\end{document}

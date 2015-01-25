@@ -16,7 +16,7 @@
 \makeatletter
 \makeatother
 
-\title{Cassandra Storage Format\\Proposal for 3.1\\Version 1}
+\title{Cassandra Storage Format\\Proposal for C* 3.1\small\\Version 2}
 \author{Benedict Elliott Smith}
 \date{January 2015}
 
@@ -57,17 +57,21 @@ expectations we have of them, and the manner in which they will be used.
 \clearpage
 \subparagraph{$RowIndex$}
 \subparagraph{}
-    One per partition. Located by a $PartitionIndex$ lookup, it stores a translation from $RowKey$ to 
-    both a positional key into the $ValueStore$ and a $RowEpoch$. Its contract with the framework is to manage 
+    One per partition. Located by a $PartitionIndex$ lookup, it stores a translation from \textit{Clustering Columns}
+    (here on referred to as $RowKey$) to both a positional key into the $ValueStore$ and a $RowEpoch$. It also
+    stores range tombstones. It will be necessary to support a variable number clustering columns, so that
+    range deletes will be supported when the functionality. This may also be used to encode collection keys. 
+    \\\\
+    The contract with the framework is to manage 
     a sequence of bytes that contain its data, indexed from zero. The framework manages the actual persistence 
     of this byte sequence, and the location of the zero position. In actual implementation it may be helpful 
-    to abstract this sequence of bytes to a sequence of pages, to help efficient indexing of large partitions, 
+    to abstract this sequence of bytes to a sequence of pages to help efficient indexing of large partitions, 
     but we leave this complexity out of this document.
     \\
     \begin{algorithmic}[2]
     \scriptsize
     \Function{Read}{$RowIndex, RowKey$}
-    \Statex \Return $\langle RowEpoch$, Positional key in $ValueStore$ for $RowKey\rangle$
+    \Statex \Return $\langle RowEpoch$, Positional key in $ValueStore$ for $RowKey\rangle \mid DeletedTimestamp$
     \EndFunction
     \end{algorithmic}
 
@@ -154,9 +158,13 @@ $\lvert X \rvert$ & $\equiv \mathbf{card}(X)$, i.e. the number of elements in $X
    \State Read the $PartitionEpoch$
    \State Initialize $RowIndex$ and $ValueStore$ to their starting positions
    \ForAll{Matching rows in $RowIndex$}
-     \State Read the $RowEpoch$ and $Pos$
-     \State Provide these and $ColIds$ to $ValueStore$
-     \State Add the result to our response
+     \If{Is $DeletedTimestamp$}
+      \State Add the range tombstone to our response
+     \Else
+      \State Read the associated $RowEpoch$ and $Pos$
+      \State Provide these and $ColIds$ to $ValueStore$
+      \State Add the result to our response
+     \EndIf
    \EndFor
    \Return Constructed response
   \EndIf
@@ -242,9 +250,14 @@ $\lvert X \rvert$ & $\equiv \mathbf{card}(X)$, i.e. the number of elements in $X
 \State $Partition \gets $ \Call{New}{}
 \State $ValueStore \Leftarrow DataFile[Pos]$
 \For{$RowKey \gets RowKeys$}
- \State $Pos, EpochDelta \gets$ \Call{Read}{$RowIndex, RowKey$}
- \State $RowEpoch \gets PartitionEpoch + EpochDelta$
- \State $Partition \Leftarrow $ \Call{Read}{$ValueStore, ColId(Columns), Pos, RowEpoch$}
+ \State $RowInfo \gets$ \Call{Read}{$RowIndex, RowKey$}
+ \If{$RowInfo \in Timestamp$}
+  \State $Partition \Leftarrow RowInfo$
+ \Else
+  \State $Pos, EpochDelta \gets RowInfo$
+  \State $RowEpoch \gets PartitionEpoch + EpochDelta$
+  \State $Partition \Leftarrow $ \Call{Read}{$ValueStore, ColId(Columns), Pos, RowEpoch$}
+ \EndIf
 \EndFor
 \Return $Partition$
 \EndFunction
@@ -506,6 +519,11 @@ of write costs.
     Alternatively, if providing a page-oriented byte layer abstraction, on encountering an
     oversized record we can immediately flush the contents of our write buffer, then interleave 
     serialization of $RowIndex$ and $ValueStore_0$ pages for the large partition.
+\paragraph{$RowKey$ Abstraction}
+\paragraph{}
+    For simplicity of presentation we have assumed a set of $RowKey$ will be provided for any query.
+    In reality range slices will be common. Behaviour is not meaningfully different, and clarity 
+    is improved by making this assumption for presentation.
 \paragraph{Dynamic Block Size}
 \paragraph{}
     At a minimum each file should select a block size optimal for the storage medium and the data distribution 
@@ -513,13 +531,32 @@ of write costs.
     or just its row index, if such a block size exists; otherwise, a 4Kb block size (also our minimum block size).
     For spinning disks, a larger block size can be used unconditionally; say 32-64Kb, as is currently the case.
     We should consider/explore using a dynamic block size within each file.
-\clearpage
 \paragraph{Decoupling of $ValueStore_N$ from $DataFile_N$}
 \paragraph{}
     We have assumed each $ValueStore_n$ has its own $DataFile_n$, but there is no requirement that this holds true,
     nor that a selection of alike $ValueStore$ could not be grouped and indexed by the same $RowIndex$ entry. Pure 
     column oriented value stores could all be grouped in this manner. These are simple additions that only 
     complicate the pseudocode unnecessarily.
+\paragraph{Collections}
+\paragraph{}
+    Collections have not been dealt with at all directly in this document. We will touch on them briefly here,
+    and outline some of the ways they can be dealt with.
+    \begin{enumerate}
+      \item{$RowIndex$ Presence}\\[2pt]
+        Perhaps the most obvious approach would be to continue the current paradigm of treating the collection key
+        as a suffix of the clustering data. While $RowIndex$ implementations will need to support variable length
+        prefixes of clustering data, supporting variable length suffixes may be an unwelcome burden, and this
+        would also require some special treatment in row-oriented $ValueStore$ to reduce the amount of row metadata.
+      \item{Direct Value Encoding}\\[2pt]
+        Alternatively, we could persist the entire collection as a dynamic width field in the row. For small
+        collections this is likely optimal in both performance and implementation complexity. The data could
+        be stored using a $RowIndex$ implementation whose zero index is the dynamic column offset.
+      \item{Indirect Value Encoding}\\[2pt]
+        If the collection is large, we could instead store a fixed offset to a page in the $DataFile_0$, or some
+        special spill-over $DataFile_S$ where the contents are stored. In implementation there would be little
+        difference between this and \textit{Direct Value Encoding}; both can utilise a $RowIndex$ implementation,
+        and only vary the locality of storage.
+    \end{enumerate}
 
 \section{Component Variants}
 Here we will outline the main variants for each component, and some of the details of their implementation.
@@ -615,6 +652,7 @@ merge performance, by intuitive description of characteristics only.
       \item Shared clustering prefixes must be compared in full, so each comparison is costlier
       \item All rows must be compared; there is no pruning of known disjoint descendant sets 
     \end{enumerate}
+\clearpage
 \paragraph{Linear Collection}
 \paragraph{}
     This is the closest to the current scenario, except that we only repeat the data once per row,
@@ -637,7 +675,6 @@ merge performance, by intuitive description of characteristics only.
     can be performed on each BTree item, so it can support all current and custom data types.
     This optimisation permits further improvement to (3) for merging, as well as optimal
     search costs for custom data types and those not supporting binary prefix comparison.
-\clearpage
 \paragraph{Binary Trie}
 \paragraph{}
     If the clustering prefixes can be compared by any binary prefix, a binary trie can be used.
@@ -651,6 +688,7 @@ merge performance, by intuitive description of characteristics only.
 The value store likely has only two major variants, and a hybrid between them: column- and row-oriented.
 There is no requirement that a given table subscribe to one or the other, however. Within a single sstable
 there can be a mix, with each field grouping selecting its own value persistence approach.
+\clearpage
 \paragraph{Row Oriented}
 \paragraph{}
 This most closely resembles the current storage, except that we consider each row a discrete unit

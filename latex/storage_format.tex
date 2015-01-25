@@ -26,7 +26,7 @@
 
 \begin{abstract}
 This document is a draft proposal for a generalised replacement of the sstable format used in Cassandra.
-The goal is to deliver a \textit{framework} building on top of a number of abstracted components, with which
+The goal is to deliver a framework building on top of a number of abstracted components, with which
 any efficient sstable representation can be encapsulated. It is designed to directly align with modern CQL
 data modelling, however it should also support thrift models at least as efficiently as the current state of art.
 \end{abstract}
@@ -34,17 +34,16 @@ data modelling, however it should also support thrift models at least as efficie
 \small
 
 \section{Components}
-First we will outline the abstract definitions of the components we will use in this framework: the
+First we will outline the abstract definitions of the components we will use in this framework, the
 expectations we have of them, and the manner in which they will be used.
 \subparagraph{$PartitionIndex$}
 \subparagraph{}
-    One per sstable.
-    Performs a translation from \textsc{Token}$(PartitionKey)$ to a set of addresses in a $DataFile$ that may contain
-    data for the key. This translation is permitted to yield false positives, but should expect to 
-    produce either zero or one result on average, with no false negatives. Multiple keys may map to the 
-    same location in $DataFile$, which can be exploited by an implementation to produce a compact mapping. 
-    These keys will generally be adjacent, but some may be out-of-order due to page packing (see Extension Two). 
-    Persistence is managed by the implementation itself.
+    One per sstable. Performs a translation from \textsc{Token}$(PartitionKey)$ to a set of addresses 
+    in a $DataFile$ that may contain data for the key. This translation is permitted to yield false positives, 
+    but should expect to produce either zero or one result on average, with no false negatives. Multiple keys 
+    may be stored at the same address in the $DataFile$, which can be exploited by an implementation to produce a 
+    more compact mapping. These keys will generally be adjacent, but some may be out-of-order due to page 
+    packing (see Extension Two). Persistence is managed by the implementation itself.
     \\
     \begin{algorithmic}[2]
     \scriptsize
@@ -52,39 +51,39 @@ expectations we have of them, and the manner in which they will be used.
     \Statex \Return All positions possibly containing $PartitionKey$
     \EndFunction
     \Statex{\bf function} \textsc{Range} ({$PartitionIndex, StartToken, EndToken$})
-    \Statex \Return ${Page \mid \forall (Token \mapsto Page) \in PartitionIndex, StartToken <= Key < EndToken }$
+    \Statex \Return ${Page \mid \forall (Token \mapsto Page) \in PartitionIndex, StartToken <= Token < EndToken }$
     \end{algorithmic}
 
 \clearpage
 \subparagraph{$RowIndex$}
 \subparagraph{}
-    One per partition. Located by a $PartitionIndex$ lookup, it performs  a translation from $RowKey$ to 
-    a $RowEpoch$ and a position to provide to a $ValueStore$ to produce cell values. Its contract with the 
-    framework is to manage a sequence of bytes that contain its data, that are indexed from zero within 
-    any partition. The framework manages the actual persistence of this byte sequence, and the location of 
-    this zero position. In actual implementation it may be helpful to abstract this sequence of bytes to
-    a sequence of pages, to help efficient indexing of large partitions, but we leave this complexity out
-    of this document.
+    One per partition. Located by a $PartitionIndex$ lookup, it stores a translation from $RowKey$ to 
+    both a positional key into the $ValueStore$ and a $RowEpoch$. Its contract with the framework is to manage 
+    a sequence of bytes that contain its data, indexed from zero. The framework manages the actual persistence 
+    of this byte sequence, and the location of the zero position. In actual implementation it may be helpful 
+    to abstract this sequence of bytes to a sequence of pages, to help efficient indexing of large partitions, 
+    but we leave this complexity out of this document.
     \\
     \begin{algorithmic}[2]
     \scriptsize
     \Function{Read}{$RowIndex, RowKey$}
-    \Statex \Return $\langle$Offsets in each $DataFile$ at which $ValueStore$ persisted $RowKey$, $RowEpoch \rangle$
+    \Statex \Return $\langle RowEpoch$, Positional key in $ValueStore$ for $RowKey\rangle$
     \EndFunction
     \end{algorithmic}
 
 \subparagraph{$ValueStore$}
 \subparagraph{}
     One per partition. A sequence of bytes that combines the position retrieved from the $RowIndex$ with the 
-    queried columns and the $RowEpoch$ to return cell values. We assume here that a property $Pos$ can be 
-    queried prior to insertion of a new row that returns the value to store in $RowIndex$ for future lookups. 
-    Like $RowIndex$, it is treated as separate a sequence of bytes for each partition that are indexed from zero,
-    the persistence of which is dealt with by the framework.
+    columns to be queried and the $RowEpoch$ to return cell values. We assume here that, prior to insertion of 
+    a new row, a property $Pos$ can be queried, returning the key to store in $RowIndex$ 
+    for future retrieval of the row we are about to insert.
+    Like $RowIndex$, it is treated as a zero-indexed sequence of bytes, the persistence of which is dealt 
+    with by the framework.
     \\
     \begin{algorithmic}[2]
     \scriptsize
     \Function{Read}{$ValueStore, ColIds, Pos, RowEpoch$}
-    \Statex \Return Values for the $ColIds$ persisted by $ValueStore$ at relative $Pos$
+    \Statex \Return Cells for the $ColIds$ persisted by $ValueStore$ at positional key $Pos$
     \EndFunction
     \end{algorithmic}
 
@@ -92,7 +91,7 @@ expectations we have of them, and the manner in which they will be used.
 \section{Implementation Details}
 \small
 The components defined in the prior section should compose reasonably naturally, as far as intuition
-is concerned. Here we attempt to define it more explicitly, with some both descriptive and mathemtically
+is concerned. Here we attempt to define it more concretely, with some both descriptive and mathematically
 explicit pseudocode describing how they can be stitched together to form a generalised storage framework.
 \\
 \subsection{Notation Key}
@@ -115,7 +114,7 @@ $\lvert X \rvert$ & $\equiv \mathbf{card}(X)$, i.e. the number of elements in $X
   \item $PartitionEpoch$, $RowEpoch$\\[2pt]
     Against each tier of our structure we will encode the minimum timestamp found in the next
     tier, so that each may be encoded more efficiently. The expectation is that this will permit
-    many cells may persist their timestamp using only a few bytes, a single bit, or no data at all
+    many cells to persist their timestamp using only a few bytes, a single bit, or no data at all
   \item $DataFile$\\[2pt]
     A persistent byte storage medium, supporting append and buffered sequential and random reads
   \item $ColId$\\[2pt]
@@ -255,18 +254,21 @@ $\lvert X \rvert$ & $\equiv \mathbf{card}(X)$, i.e. the number of elements in $X
 \clearpage
 \subsection{Extension One - Column Groupings}
 \small
-When reading data from an sstable, fetching data for any single column necessitates 
-reading from disk data for all other columns that were written near in time, or have
+When reading data from an sstable, fetching data for any single column necessitates also
+reading any columns that were written near-in-time, or have
 been compacted together. For tables with many columns this can result in suboptimal query
 performance when reading only a subset of the columns.
-\\\\ Within this framework, we will support multiple schemes for value encoding and retrieval, 
-which may fit different columns stored in the table differently, or may only support a subset 
-of the fields, but be ideal for all such fields - e.g. columnar or hybrid value storage for 
-non-collection timeseries fields, but row-oriented for the collection data.
 \\\\
-By permitting fields to be grouped for purposes of persistence, we pack more tightly data
-that may be accessed in isolation within a large partition, meaning range queries over this subset
-of fields incur fewer IOPs. 
+By permitting fields to be grouped for purposes of persistence, we can pack more tightly together data
+that may be accessed in isolation within a large partition, permitting range queries over these columns
+to incur fewer IOPs. Conversely, rarely accessed fields can be separated into their own group
+to avoid their polluting all other common queries.
+\\\\ 
+Within the framework we also support multiple schemes for value encoding and retrieval, 
+which may fit different columns stored in the table differently, or may only support a subset 
+of the columns on a table. For example columnar or hybrid value storage may be ideal for
+densely populated non-collection timeseries fields. This extension permits us to use these value stores
+for such fields  and row-oriented for the remainder; or any other optimal configuration.
 \\\\
 At the same time, this approach permits us to separate values from the partition index in situations 
 we expect many intra-partition range queries, so that the partition indexes can expect better cache occupancy.
@@ -276,7 +278,7 @@ of write costs.
 \paragraph{Definitions}
 \begin{itemize}
   \item (Column) $Group_N$\\[2pt]
-    $N$ groupings ofcolumns, each containing a subset of the total columns defined on the table, 
+    $N$ groupings of columns, each containing a subset of the total columns defined on the table, 
     that will be persisted together in a corresponding $DataFile_N$. By default there will be one 
     group containing all columns, but rarely accessed columns or columnar layouts may be separated 
     into their own group.
@@ -288,9 +290,9 @@ of write costs.
 \begin{itemize}
   \item $ValueStore_N$\\[2pt]
     One per $Group_N$, per partition. Otherwise as defined originally.
-  \item $DataFile_n$\\[2pt]
-    One per $Group_n$, per partition, storing the associated $ValueStore_n$, with $DataFile_0$ 
-    storing our $RowIndex$ and per-partition data.
+  \item $DataFile_N$\\[2pt]
+    One per $Group_N$, per partition, storing the associated $ValueStore_N$, with $DataFile_0$ 
+    storing our $RowIndex$ and partition-wide data.
 \end{itemize}
 
 \begin{algorithm}
@@ -403,13 +405,13 @@ of write costs.
 \subsection{Extension Two - Partition Reordering}
 \small
     An sstable represents an ordered collection of partitions, however this doesn't
-    actually require the data be in order on disk. By permitting records to appear out-of-order
+    require the data be in order on disk. By permitting records to appear out-of-order
     we can reduce the number of records that cross a page boundary, reducing the number of IOPs 
     needed per query. This should result in increased throughput and reduced maximum latencies. 
-    For linear scan performance we need ordered traversal, however, but this only necessitates
-    their being persisted \emph{almost} in order. We define a $BufferLimit$ which bounds the amount 
-    of buffer space any reader can be required to use to ensure it can produce its results in their 
-    true order. Flushing enforces this by buffering some multiple $K$ of $BufferLimit$, and selecting 
+    For linear scan performance we need ordered traversal, however this only necessitates
+    records occurring \emph{almost} in order. We define a $BufferLimit$ which bounds the amount 
+    of buffer space any reader can be required to have to produce results in order.
+    Flushing enforces this by buffering some multiple $K$ of $BufferLimit$, and selecting 
     from this buffer a well packed page that favours records earlier in the stream, while leaving a 
     good distribution of records to help pack future pages.
 
@@ -470,105 +472,134 @@ of write costs.
 \clearpage
 \subsection{Extension Two Alternative - Partition Redirection}
 \small
-  An alternative to the approach just outlined that achieves the same ends is to 
-  produce (potentially) multiple sstables at flush time, of logarithmically smaller size. 
-  When we come to flush, we write the contents of our buffer in order, but omit a subset that
+  An alternative to the approach just outlined, but achieving the same ends, is 
+  producing multiple sstables at flush time, of logarithmically smaller size. 
+  When flushing we write the contents of our buffer in order, but omit a subset that
   permit us to pack our pages better. Any omitted are siphoned into their own buffer for a smaller
   sstable, on which the logic is repeated (until returns are minimal). The advantage of this approach
   is it may combine well with techniques we will outline later for managing hash partition indexes,
-  and does not require our partition index implementations to cope with out-of-order records.
+  and does not require partition index implementations to cope with out-of-order records.
+\\\\
+  One slight further variant on this approach is to write all of these pages to the same sstable,
+  persisting somewhere which subset of pages contain "out-of-order" records - really a parallel order.
+  This could meet the constraints imposed by \textit{Partition Reordering} 
+  by ensuring at most \tiny{$\dfrac{BufferLimit}{PageSize}$}\small parallel-order pages must be retained 
+  by any scanner. This also avoids $PartitionIndex$ support for out-of-order records, 
+  but requires a separate bloom filter and partition index for each parallel order.
 
 \subsection{Notes}
 \small
 \paragraph{Large Partitions}
 \paragraph{}
     These pseudocode implementations have ignored certain complexities of dealing with very large
-    partitions, and assumes we can assemble the entire partition in memory. This was to keep
+    partitions, and assumed we can assemble the entire partition in memory. This was to keep
     the complexity of our pseudocode to a minimum. To solve this problem, partitions with a $RowIndex$ 
-    spread across many pages can be filtered into a separate
-    file, with $Group_0$ being shifted to $Group_{-1}$, so that no values are stored alongside
-    the $RowIndex$. Thus we do not need to know its length, since there is no $ValueStore_0$ to locate.
+    spread across many pages can be filtered into a separate file, with $Group_0$ being shifted to 
+    $Group_{-1}$, so that no values are stored alongside the $RowIndex$. Thus we do not need to know 
+    its length, since there is no $ValueStore_0$ to locate.
     Since only one partition will be serialized we also do not need to know the position of the next $RowIndex$.
+    \\\\
+    For most sstables, a majority of records will fall one side of this barrier, so there should not be a
+    significant increase in sstable count. Since this will only be performed for large partitions spread over
+    multiple pages, there will also be no IO penalty.
+    \\\\
+    Alternatively, if providing a page-oriented byte layer abstraction, on encountering an
+    oversized record we can immediately flush the contents of our write buffer, then interleave 
+    serialization of $RowIndex$ and $ValueStore_0$ pages for the large partition.
 \paragraph{Dynamic Block Size}
 \paragraph{}
-    At a minimum each file should select a block size optimal for the data distribution being written to it, 
-    and the storage medium. For SSDs this should mean a block size just large enough to fit a single partition, 
-    or just its row index, if such a block size exists; otherwise, a 4Kb block size (also a minimum block size).
+    At a minimum each file should select a block size optimal for the storage medium and the data distribution 
+    being written to it. For SSDs this should mean a block size just large enough to fit a single partition, 
+    or just its row index, if such a block size exists; otherwise, a 4Kb block size (also our minimum block size).
     For spinning disks, a larger block size can be used unconditionally; say 32-64Kb, as is currently the case.
     We should consider/explore using a dynamic block size within each file.
+\clearpage
 \paragraph{Decoupling of $ValueStore_N$ from $DataFile_N$}
 \paragraph{}
-    There's not actually a requirement that each $ValueStore_n$ has its own $DataFile_n$, nor that a collection
-    of alike $ValueStore_N$ could not be grouped to be indexed by the same $RowIndex$ entry (pure column oriented
-    value stores can all be indexed by the same key). This is a simple addition, but complicates the pseudocode
-    unnecessarily.
+    We have assumed each $ValueStore_n$ has its own $DataFile_n$, but there is no requirement that this holds true,
+    nor that a selection of alike $ValueStore$ could not be grouped and indexed by the same $RowIndex$ entry. Pure 
+    column oriented value stores could all be grouped in this manner. These are simple additions that only 
+    complicate the pseudocode unnecessarily.
 
-\clearpage
 \section{Component Variants}
-Here we will outline some categories and details of implementation variants for each component.
+Here we will outline the main variants for each component, and some of the details of their implementation.
 
 \subsection{Partition Index}
 The partition index most likely needs just two implementations, although it may be that subtle variations
-of each are tried over time. The implementations depend on the nature of partitioning scheme, which
+of each are tried over time. The implementations depend on the nature of the partitioning scheme, which
 fall into two categories: Ordered and Hashed.
 \paragraph{Ordered}
 \paragraph{}
     The obvious choice is a B\textsuperscript{+}-tree, although since our data is static some alternatives are viable.
     Since this partitioning scheme is uncommon, however, it may not be worth investing labour in a major new 
     approach, and a simplification of the current scheme may be sensible, with some modifications to match our
-    new layout:
-    \\
-    Since each page has its own internal index, our macro index needs only store the first token occurring in each
-    page, so that the last page with a start before our desired token can be queried. A summary index can be 
-    constructed that does the same for the index. This summary can reside in memory, directing us to an index
-    page within which we can perform binary search. This translates directly to the sstable representing the 
+    new layout.
+    \\\\
+    Since each page has its own internal micro index, our macro index need only store the first token occurring 
+    in each page. A summary index can be constructed that does the same for the index itself, within which
+    we binary search for the index record to consult. This summary can reside in memory, directing us to an 
+    index page within which we perform a binary search to find the data page. 
+    This translates directly to the sstable representing the 
     bottom three levels of a B\textsuperscript{+}-tree, with the highest remaining resident in memory as our 
     summary, and the middle being the highly cacheable index. For small datasets we could omit the summary level
     and store the entire index in memory, since the required space will be significantly less than the current
-    situation if smaller page sizes are not exploited, since we only need approximately 8 bytes per page.
-    .
+    situation for the same page size. Only 8 bytes are necessary per page, instead of 16 bytes 
+    + \textsc{Len}($PartitionKey$) at minimum.
+    
 \paragraph{Hashed}
 \paragraph{}
-    The basic building block for hash partitioning will be the same as for Ordered, however we can exploit
-    the random data distribution to, in some cases, significantly improve the space required for storage, 
-    so that we either require no summary, or the entire index can fit in memory (or a lossy version thereof)
-     - using perhaps as little as a few bits per page.
+    The basic building block for hash partitioning will be the same as \textit{Ordered}, however we can exploit
+    the random data distribution to improve the computational complexity of lookup and the space required, 
+    both in memory and on disk.
     \\\\
-    The basic intuition we can exploit is that, given a uniform token distribution and a known start/end 
-    for an sstable (\href{https://issues.apache.org/jira/browse/CASSANDRA-6696}{CASSANDRA-6696}) is a prerequisite),
-    we can calculate the average boundary token that can be expected for each page. This
-    expectation will typically be quite wrong, but the \textit{error} will be distributed over a small 
-    range, and this can be exploited in three ways:
+    The basic intuition to exploit is that, given a uniform token distribution and a known start/end 
+    for an sstable (\href{https://issues.apache.org/jira/browse/CASSANDRA-6696}{CASSANDRA-6696}) being 
+    helpful here), we can calculate the average boundary token that can be expected for 
+    each page. This expectation will typically be quite wrong, but the \textit{error} will be distributed 
+    over a small range, and this can be exploited in three ways:
 
-    \begin{itemize}
+    \begin{enumerate}
+      \item{\textbf{Hash Indexed Summary}}\\[2pt]
+        Instead of performing binary search on the summary, we can predict the correct summary page
+        based on the expected distribution of data, at write-time ensuring this is never incorrect
+        by more than a predetermined bound. A bounded number of linear probes from the predicted location
+        within this page can then be performed to find the desired token boundary, or a binary search
+        can be performed over a known maximal range either side of the predicted position.
       \item{\textbf{Hash Indexed Index}}\\[2pt]
-        We can pad the index file so that our expected boundaries for the index are always correct,
-        requiring exactly one seek into the index file. The amount of padding necessary will typically
-        be small, but if it is large this approach can be abandoned.
+        We can eliminate the summary entirely, instead padding the index file so that our expected boundaries 
+        for the index file are always correct, requiring exactly one seek into the index file. The amount 
+        of padding necessary will typically be small, but if it is large this approach can be abandoned
+        in favour of another.
       \item{\textbf{Probabilistic Index Search}}\\[2pt]
-        We can predict a location to begin our index search in, and an expected range to binary search around
-        it that will contain the desired page mapping with $P(X) \geq Limit$, for some configured $Limit$. 
+        We can alternatively eliminate the summary by predicting a location to begin our index search in, 
+        along with an expected range to binary search around, precomputed at write-time.
+        This range will contain the desired page mapping with $P(X) \geq Limit$, for some configured $Limit$. 
         If the search fails we expand the area by a similar logic. This yields a predictable performance
-        characteristic.
+        characteristic with fixed memory constraints.
       \item{\textbf{Golomb Encoded Page Boundaries}}\\[2pt]
-        Instead of encoding our page boundaries as a list of tokens, we can instead encode as the distance 
-        between our real token boundary and the one we predicted. The error will be distributed around zero,
-        and can be encoded efficiently using Golomb codes and a constant multiplier (or a variable meaning
-        for each code). This permits tunable accuracy, yielding some $P(X) \geq Limit$ that we will select
+        We can potentially eliminate both the summary and the index. Instead of encoding our page boundaries 
+        as a list of tokens, we can instead encode as the distance between the real token boundary of any
+        two pages and the one we predict. The error will be distributed around zero, following a geometric
+        distribution, and so can be stored efficiently with Golomb codes with a constant multiplier. 
+        This permits tunable accuracy, yielding some $P(X) \geq Limit$ that we will select
         the correct page; if we do not find the correct page, we can be certain the adjacent page is correct,
         so that on average each query performs $2-Limit$ seeks. The level of compression achieved is dependent
-        on this $Limit$, and the distribution of the data, which combine to require a given size of multiplier;
-        the smaller $Limit$ or better distributed the data, the larger the viable multiplier and hence smaller
-        the Golomb codes. This technique needs some exploration, but some simple simulation demonstrates it
-        should be viable.
-    \end{itemize}
+        on this $Limit$, and the distribution of the data. These two variables combine to require a scale of 
+        multiplier; the multiplier scale in turn determines the range of Golomb codes needed.
+        The smaller $Limit$, or better distributed the data, the larger the viable multiplier and hence the 
+        smaller the Golomb codes. This technique needs some exploration, but some simple simulation suggests
+        viability beyond the theoretical.
+        \\\\
+        This technique may compose well with \textit{Extension Two - Partition Redirection}, as we could
+        select records to persist based both on page density and page boundary.
+    \end{enumerate}
 
 \small
 \paragraph{Out of Order Records}
 \paragraph{}
-    In both cases out-of-order persistence is permitted, and to support this a generalized pre-index
-    may be useful, in which we store the few tokens we have permitted to be re-ordered. Lookups hit
-    this index first, and on finding no results fallback to the normal index.
+    If we opt to support out-of-order persistence, a generalized pre-index may be useful, in which we store 
+    the few tokens we have permitted to be re-ordered. Lookups hit this index first, and on finding no results
+    fallback to the normal index.
 
 \subsection{Row Index}
 The Row Index has by far the most scope for variation, so we will only touch briefly on the various
@@ -577,25 +608,25 @@ merge performance, by intuitive description of characteristics only.
 \paragraph{Entry Per Cell}
 \paragraph{}
     This isn't really possible in the new world, but is worth discussing for comparison since it
-    describes the current situation. Here we have each clustering prefix repeated once per cell.
+    describes the current state-of-art. Here we have the entire clustering prefix repeated for each cell.
     The cost of merging is as suboptimal as possible: 
     \begin{enumerate}
-      \item There are $\lvert Columns \rvert$ more items to merge than necessary
+      \item There are $\times \lvert Columns \rvert$ more items to merge than necessary
       \item Shared clustering prefixes must be compared in full, so each comparison is costlier
       \item All rows must be compared; there is no pruning of known disjoint descendant sets 
     \end{enumerate}
 \paragraph{Linear Collection}
 \paragraph{}
     This is the closest to the current scenario, except that we only repeat the data once per row,
-    and not once per cell. The idea would be to print each complete clustering prefix in sequence,
+    not per cell. The idea would be to store each complete clustering prefix in sequence,
     and linearly scan for the relevant record. For very large partitions this would not support 
-    any true indexing, but it is very simple, and for small partitions would be fine, and optimal
-    for single rows. The cost of merging is improved by eliminating (1)
+    any true indexing, but it is very simple. For small partitions it would be acceptable, and is
+    optimal for single rows. The cost of merging is improved by eliminating (1).
 \paragraph{Column Trie, Linear Internal Collections}
 \paragraph{}
     The next simplest approach is to split each clustering column into its own set of linear
     sequences of data, so that with multiple clustering columns we do not repeat data present
-    in prior tiers. This permits data compression. Merging is also improved by significantly
+    in higher tiers. This permits data compression. Merging is also improved by significantly
     reducing the effects of (2) and (3). For partitions whose clustering column tiers are 
     each smaller than a single page this is a fairly optimal approach as binary search 
     can be performed on each tier as you descend.
@@ -605,18 +636,19 @@ merge performance, by intuitive description of characteristics only.
     BTree makes perfect sense. This is still a very general collection, since any kind of comparison
     can be performed on each BTree item, so it can support all current and custom data types.
     This optimisation permits further improvement to (3) for merging, as well as optimal
-    search costs for custom data types. 
+    search costs for custom data types and those not supporting binary prefix comparison.
+\clearpage
 \paragraph{Binary Trie}
 \paragraph{}
-    If the clustering prefixes can be compared in bit-order, a binary trie can be used.
-    This permits optimal behaviour for all of (1), (2) and (3), making merges extremely
+    If the clustering prefixes can be compared by any binary prefix, a binary trie can be used.
+    This permits optimal behaviour for (2) and (3), making merges extremely
     cheap as the number of rows and partitions grow, which is likely to be of significant benefit,
     given how CPU constrained some users are on these costs. This also permits superior
     data compression. There are a number of possible binary trie variants to explore, but this
     warrants a separate document or JIRA ticket to discuss the options.
 
 \subsection{Value Store}
-The value store generally has only two major variants, and a hybrid between the two: column- and row-oriented.
+The value store likely has only two major variants, and a hybrid between them: column- and row-oriented.
 There is no requirement that a given table subscribe to one or the other, however. Within a single sstable
 there can be a mix, with each field grouping selecting its own value persistence approach.
 \paragraph{Row Oriented}
@@ -629,16 +661,16 @@ compression of the structural data.
     Each column that occurs at least once in the file will have an index in this bitmap, which encodes
     if the column appears in this row, to permit efficient indexing within the row. It may be that some
     columns appear in every row, and these may be encoded in the file metadata to remove them from the
-    row bitmaps
+    row bitmaps.
   \item $HasTimestamp$ Bitmap\\[2pt]
-    Each column with its bit \textit{set} in $HasCell$ will have an index in $HasTimestamp$; this 
+    Each column with its bit set in $HasCell$ will have an index in $HasTimestamp$; this 
     will indicate if there is any timestamp offset necessary from $RowEpoch$; a value of zero 
     indicates $RowEpoch$ is enough by itself to construct the cell timestamp.
   \item $HasValue$ Bitmap\\[2pt]
-    Each column with its bit \textit{set} in $HasCell$ will have an index in $HasValue$; this 
-    will indicate if there is any actual data associated, or if the "value" is a tombstone
+    Each column with its bit set in $HasCell$ will have an index in $HasValue$; this 
+    will indicate if there is any actual data associated, or if the "value" is a tombstone.
   \item $HasExpiry$ Bitmap\\[2pt]
-    Each column with its bit \textit{set} in $HasValue$ will have an index in $HasExpiry$; this 
+    Each column with its bit set in $HasValue$ will have an index in $HasExpiry$; this 
     will indicate if there is an expiry associated with the value.
   \item $HasInfo$ Bitmap\\[2pt]
     A bitmap indicating if $HasCell$, $HasTimestamp$, $HasValue$ or $HasExpiry$ are necessary to 
@@ -647,14 +679,14 @@ compression of the structural data.
     If any bits are set in $HasTimestamp$, this will encode how many bytes are needed to encode them.
     Each will be encoded with the same width. This and $HasInfo$ can be encoded in the same byte.
   \item $Timestamps$\\[2pt]
-    A fixed-width array of timestamps for each column marked in $HasTimestamp$
+    A fixed-width array of timestamps for each column marked in $HasTimestamp$.
   \item $Expiries$\\[2pt]
-    A fixed-width array of expiries for each column marked in $HasExpiry$
+    A fixed-width array of expiries for each column marked in $HasExpiry$.
   \item $ColumnWidth : ColId \mapsto \mathbb{N}$\\[2pt]
     A table level property indicating which columns are fixed width, and their widths. A value of $\infty$
     indicates the column is dynamic width.
   \item $ColumnCount$\\[2pt]
-    A table level property indicating the number of columns persisted against this value store
+    A table level property indicating the number of columns persisted against this value store.
   \item $Values_B$\\[2pt]
     The cells appearing in $HasValue$ whose types permit fixed-width encoding of length $B$ will appear next, 
     so that they may indexed directly without any further information. All columns will appear grouped by
@@ -676,7 +708,7 @@ compression of the structural data.
  and done only to aid clarity. Other optimisations with presentation issues are similarly left out.
  \item{} To help read implementation, we select $ColId$ values that correspond to the size of the column, with 
  dynamically sized columns occurring last. This permits us to walk the columns that are being queried in the order
- the data is stored on disk, and to perform fewer calculations to know index into it, 
+ the data is stored on disk, and to perform fewer calculations for indexing into it. 
 \end{itemize}
 
 \begin{algorithm}
@@ -763,7 +795,8 @@ data storage requirements, and make indexing to a given row/column involve fewer
 The basic idea is to store all of the values in a column-oriented fashion within a single data page only,
 so a row index would store the page number, and the row offset within the page. The goal is to support
 row-oriented workloads, just more efficiently. This model could support non-fixed-width types, but there
-is probably little benefit to be had when these could be stored in a row-oriented scheme as easily.
+is probably little benefit to be had when these could instead be persisted in a row-oriented value store
+by placing the fields in a different $Group_N$.
  \begin{itemize}
   \item $TimestampSize$\\[2pt]
     Occupying 2 bits per field in the row, indicates the size of timestamp encoding, with 0 indicating
@@ -772,15 +805,17 @@ is probably little benefit to be had when these could be stored in a row-oriente
     cumulative value as opposed to index.
   \item $IsDeleted$ Bitmap \\[2pt]
     Encoded once per row, if $HasDeleted$ is set. A bitmap to be checked before returning the value
-    encoded, that indicates is the cell is deleted. Treated as a pseudo column, of fixed width
+    encoded, that indicates if the cell is deleted. Treated as a pseudo column, of fixed width.
   \item $HasDeleted$ Boolean \\[2pt]
-    Indicates if $IsDeleted$ is present
+    Indicates if $IsDeleted$ is present.
   \item $HasExpiry$ Bitmap\\[2pt]
-    Bitmap indicating which columns need to save expiry and deleted information
-  \item $ColumnWidth$ Bitmap\\[2pt]
-    Must also support a cumulative value rank based on fixed-width size, but this can be precomputed
+    Bitmap indicating which columns need to save expiry and deleted information.
+  \item $ColumnWidth : ColId \mapsto \mathbb{N}$\\[2pt]
+    A table level property indicating which columns are fixed width, and their widths. A value of $\infty$
+    indicates the column is dynamic width. Must also support a cumulative value rank based on fixed-width size, 
+    but this can be precomputed.
   \item $ColumnCount$\\[2pt]
-    A table level property indicating the number of columns persisted against this value store
+    A table level property indicating the number of columns persisted against this value store.
 \end{itemize}
 
 \begin{algorithm}

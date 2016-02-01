@@ -1,0 +1,60 @@
+rewire=/home/benedict/git/swap.rewire
+cassdir=/home/benedict/git/cassandra
+
+if [ $# -eq 1 ] ; then
+  git checkout $1
+  if [ $? -ne 0 ] ; then
+    echo "checkout failed; aborting swap"
+    exit 1
+  fi
+fi 
+
+cd $cassdir
+mkdir -p build/branch-cache
+
+newversion=`grep -F 'property name="base.version" value=' build.xml | sed -r 's@.*value="([0-9]+.[0-9]+)[.].*@\1@'`
+newversionas=$newversion
+gitbranch=`git status -bs | grep -E '^##' | sed -r 's@## ([^.]+).*@\1@g'`
+if [ `grep "${gitbranch}=" $rewire | wc -l` -gt 0 ] ; then
+  newversionas=`grep "${gitbranch}=" $rewire | cut -d'=' -f2`
+fi
+
+buildversion=`ls -1 build | grep -E 'apache-cassandra-[0-9.]+-SNAPSHOT[.]jar' | sed -r 's@.*([0-9]+\.[0-9]+)\.[0-9]+.*@\1@g'`
+oldversion="$buildversion"
+oldversionas="$buildversion"
+if [ -f build/branch-cache/current ] ; then
+  oldversion=`head -1 build/branch-cache/current`
+  oldversionas=`tail -1 build/branch-cache/current`
+  if [ "$oldversion" != "$oldversionas" -a "$oldversion" != "$buildversion" ] ;  then
+    echo "build version was non-standard and does not match logged version; discarding old version"
+    oldversion=""
+    oldversionas=""
+  fi
+fi
+
+if [ "$oldversion" == "$newversion" -a "$oldversionas" == "$newversionas" ] ; then
+  echo "same version detected; aborting swap"
+  exit 1
+fi
+
+if [ "$oldversion" != "" ] ; then
+  rm -R build/branch-cache/$oldversion
+  mkdir -p build/branch-cache/$oldversion/{gen-java,build}
+  mv build/* build/branch-cache/$oldversion/build
+  mv src/gen-java build/branch-cache/$oldversion/
+fi
+
+if [ -d build/branch-cache/$newversion ] ; then
+  mv build/branch-cache/$newversion/build/* build/
+  rm -f src/gen-java
+  mv build/branch-cache/$newversion/gen-java src/
+fi
+
+echo $newversion > build/branch-cache/current 
+echo $newversionas >> build/branch-cache/current
+
+if [ "$newversionas" == "2.0" ] ; then
+    JAVA_HOME=/home/benedict/bin/jdk1.7; export JAVA_HOME
+fi
+
+ant clean && ant

@@ -1,0 +1,22 @@
+versions=""
+while [ $# -gt 0 ] ; do
+    ver=""
+    if [ "$1" == "2.1" -o "$1" == "2.2" -o "$1" == "2.0" -o "3.0" ] ; then ver="cassandra-${1}" ;
+    elif [ "$1" == "trunk" ] ; then ver="trunk"
+    else echo "invalid parameter $1" ; exit 1 ;
+    fi
+    versions="${versions} ${ver}"
+    shift
+done
+echo $versions
+
+dir=`mktemp -d`
+cd $dir
+git clone /home/benedict/git/cassandra
+cd cassandra 
+for ver in $versions ; do
+    git checkout $ver
+    ant realclean && ant
+    if [ $? -ne 0 ] ; then echo "build failed for $ver" ; exit 1 ; fi 
+done
+rm -fR $dir

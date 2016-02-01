@@ -1,0 +1,4 @@
+for i in `git branch | grep -E "^ *(C-)?[0-9]{4,5}.*" | sed -r 's@^ *(C-)?(....[0-9]?).*@\2@' | sort -u` ; do 
+    echo $i `/home/benedict/git/jira-desc $i` &
+done | sort
+wait

@@ -1,0 +1,1 @@
+git status -s | grep '??' | cut -d' ' -f2- | xargs -d'\n' rm

@@ -1,0 +1,1 @@
+cat test.out | grep -B1 -E "Tests run: [0-9]+, Failures: [0-9]+, Errors: [0-9]+" | grep -v -E "Tests run: [0-9]+, Failures: 0, Errors: 0" | grep -B1 -E "Tests run: [0-9]+, Failures: [0-9]+, Errors: [0-9]+"

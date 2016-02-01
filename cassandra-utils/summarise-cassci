@@ -1,0 +1,28 @@
+dir="/home/benedict/git/_cassci-cache"
+urlprefix="ttp://cassci.datastax.com/job/"
+cd $dir
+curl -sg "http://cassci.datastax.com/api/json?depth=2&tree=jobs[name,color,lastCompletedBuild[timestamp,number]]" | sed -r 's@(null|\})\},@\n@g' | sed -r 's@["{}]@@g' | grep -vE 'color:(notbuilt|disabled)$' | sed -r 's@^.*name:(.+),color:[a-z]+,lastCompletedBuild:number:([0-9]+)[^0-9].*timestamp:([0-9]+)$@\1,\2,\3@' | grep -E "^[a-z_\-]+,[0-9]+,[0-9]+$" > job-listing
+
+mintimestamp=`date -d '2 weeks ago' +%s`
+mintimestamp=${mintimestamp}000
+for job in `cat job-listing` ; do
+  name=`echo $job | cut -d',' -f1`
+  number=`echo $job | cut -d',' -f2`
+  timestamp=`echo $job | cut -d',' -f3`
+  f="$name-$number"
+  if [ $timestamp -gt $mintimestamp ] && [ ! -f $f ] ; then
+    echo $name
+    for build in `curl -sg "http://cassci.datastax.com/job/$name/api/json?tree=builds[number,timestamp]"  | sed -r 's@\},@\n@g' | sed -r 's@(["{}a-z:]|\[|\])+@@g' | sort -urn | head -5` ; do
+      number=`echo $build | cut -d',' -f1`
+      timestamp=`echo $build | cut -d',' -f2`
+      f="$name-$number"
+      if [ $timestamp -gt $mintimestamp ] && [ ! -f $f ] ; then
+        echo $f
+        curl -gs http://cassci.datastax.com/job/$name/$number/testReport/api/json?tree=suites[cases[className,age,status]] > $f &
+      fi 
+    done
+    wait
+  else
+    echo skipping $name $timestamp $f
+  fi
+done

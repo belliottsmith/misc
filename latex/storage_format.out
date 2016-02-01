@@ -1,0 +1,12 @@
+\BOOKMARK [1][-]{section.1}{Components}{}% 1
+\BOOKMARK [1][-]{section.2}{Implementation Details}{}% 2
+\BOOKMARK [2][-]{subsection.2.1}{Notation Key}{section.2}% 3
+\BOOKMARK [2][-]{subsection.2.2}{Core Algorithm}{section.2}% 4
+\BOOKMARK [2][-]{subsection.2.3}{Extension One - Column Groupings}{section.2}% 5
+\BOOKMARK [2][-]{subsection.2.4}{Extension Two - Partition Reordering}{section.2}% 6
+\BOOKMARK [2][-]{subsection.2.5}{Extension Two Alternative - Partition Redirection}{section.2}% 7
+\BOOKMARK [2][-]{subsection.2.6}{Notes}{section.2}% 8
+\BOOKMARK [1][-]{section.3}{Component Variants}{}% 9
+\BOOKMARK [2][-]{subsection.3.1}{Partition Index}{section.3}% 10
+\BOOKMARK [2][-]{subsection.3.2}{Row Index}{section.3}% 11
+\BOOKMARK [2][-]{subsection.3.3}{Value Store}{section.3}% 12

@@ -1,0 +1,57 @@
+HTTP request sent, awaiting response... 200 OK
+Length: unspecified [text/html]
+Saving to: ‘issues.apache.org/jira/browse/CASSANDRA-6706’
+
+
+
+2014-09-21 19:58:30 (55.6 KB/s) - ‘issues.apache.org/jira/browse/CASSANDRA-6706’ saved [62482]
+
+--2014-09-21 19:58:30--  https://issues.apache.org/jira/browse/CASSANDRA-7949
+Reusing existing connection to issues.apache.org:443.
+HTTP request sent, awaiting response... 200 OK
+Length: unspecified [text/html]
+Saving to: ‘issues.apache.org/jira/browse/CASSANDRA-7949’
+
+
+
+2014-09-21 19:58:32 (98.7 KB/s) - ‘issues.apache.org/jira/browse/CASSANDRA-7949’ saved [97585]
+
+--2014-09-21 19:58:32--  https://issues.apache.org/jira/browse/CASSANDRA-6209
+Reusing existing connection to issues.apache.org:443.
+HTTP request sent, awaiting response... 200 OK
+Length: unspecified [text/html]
+Saving to: ‘issues.apache.org/jira/browse/CASSANDRA-6209’
+
+    [   <=>                                                                                                                                                                                                                                            ] 52,203      54.9KB/s                 [    <=>                                                                                                                                                                                                                                           ] 52,203      54.9KB/s   in 0.9s   
+
+2014-09-21 19:58:33 (54.9 KB/s) - ‘issues.apache.org/jira/browse/CASSANDRA-6209’ saved [52203]
+
+--2014-09-21 19:58:33--  https://issues.apache.org/jira/browse/CASSANDRA-6075
+Reusing existing connection to issues.apache.org:443.
+HTTP request sent, awaiting response... 200 OK
+Length: unspecified [text/html]
+Saving to: ‘issues.apache.org/jira/browse/CASSANDRA-6075’
+
+     0K .......... .......... .......... .......... .......... 24.6K
+    50K .......... .......... ....                             26.0K=3.0s
+
+2014-09-21 19:58:37 (25.0 KB/s) - ‘issues.apache.org/jira/browse/CASSANDRA-6075’ saved [76285]
+
+--2014-09-21 19:58:37--  https://issues.apache.org/jira/browse/CASSANDRA-5261
+Reusing existing connection to issues.apache.org:443.
+HTTP request sent, awaiting response... 200 OK
+Length: unspecified [text/html]
+Saving to: ‘issues.apache.org/jira/browse/CASSANDRA-5261’
+
+     0K .......... .......... .......... .......... ....       48.1K=0.9s
+
+2014-09-21 19:58:38 (48.1 KB/s) - ‘issues.apache.org/jira/browse/CASSANDRA-5261’ saved [45685]
+
+--2014-09-21 19:58:38--  https://issues.apache.org/jira/browse/CASSANDRA-5913
+Reusing existing connection to issues.apache.org:443.
+HTTP request sent, awaiting response... 200 OK
+Length: unspecified [text/html]
+Saving to: ‘issues.apache.org/jira/browse/CASSANDRA-5913’
+
+     0K .......... .......... .......... .......... .......... 67.8K
+    50K .......... .........

@@ -1,0 +1,764 @@
+\documentclass[fleqn]{article}
+
+\usepackage{hyperref}
+\usepackage[utf8]{inputenc}
+\usepackage{listings}
+\usepackage{color}
+\usepackage{xcolor}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{setspace}
+\usepackage{multirow}
+\usepackage{algorithm}
+\usepackage{xpatch}
+\usepackage[noend]{algpseudocode}
+
+\makeatletter
+\def\BState{\State\hskip-\ALG@thistlm}
+\xpatchcmd{\algorithmic}{\itemsep\z@}{\itemsep=0.5ex plus1pt}{}{}
+\algnewcommand{\LineComment}[1]{\Statex \hskip\ALG@thistlm #1}
+\makeatother
+
+\title{Cassandra Storage Format\\Proposal for 3.1\\Version 1}
+\author{Benedict Elliott Smith}
+\date{January 2015}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This document is a draft proposal for a generalised replacement for the sstable format used in Cassandra.
+The goal is to deliver a framework building on top of a number of abstracted components, with which
+any efficient sstable representation can be encapsulated. It is designed to directly align with modern CQL
+data modelling, however it should also support thrift models at least as efficiently.
+\end{abstract}
+
+\small
+
+\section{Outline}
+This section will outline the components and some associated concepts that are common to
+\\
+\paragraph{Definitions}
+\subparagraph{$PartitionEpoch$, $RowEpoch$}
+\subparagraph{}
+    Against each tier of our structure we will encode the minimum timestamp found in the next
+    tier, so that each may be encoded more efficiently. The expectation is that this will permit 
+    many cells to store either only a few bytes, a single bit, or no data at all, to represent their timestamp.
+\subparagraph{$ColId$}
+\subparagraph{}
+    A translation from column to a unique integer id
+
+\paragraph{Components}
+\paragraph{}
+These components will each have more than one implementation.
+\subparagraph{$PartitionIndex$}
+\subparagraph{}
+    One per sstable.
+    Performs a translation from $PartitionKey$ to a set of addresses in $DataFile$ that may contain
+    data for the key. This translation is permitted to yield false positives, but should
+    expect to produce either zero or one result on average, with no false negatives.
+    Multiple keys may map to the same location in $DataFile$, which can be exploited by an implementation
+    to produce a compact mapping. These keys will generally be adjacent, but some may be out-of-order
+    due to page packing. Its persistence is managed separately.
+    \\
+    \begin{algorithmic}[2]
+    \scriptsize
+    \Function{Lookup}{$PartitionIndex, Token$}
+    \Statex \Return All positions possibly containing $PartitionKey$
+    \EndFunction
+    \Statex{\bf function} \textsc{Range} ({$PartitionIndex, StartToken, EndToken$})
+    \Statex \Return ${Page \mid \forall (Token \mapsto Page) \in PartitionIndex, StartToken <= Key < EndToken }$
+    \end{algorithmic}
+
+\subparagraph{$RowIndex$}
+\subparagraph{}
+    One per partition. Accessed sequentially, located by a $PartitionIndex$ lookup, it performs 
+    a translation from $RowKey$ to a $RowEpoch$ and a position to provide to each $ValueStore_N$
+    to produce cell values. It is stored in $DataFile$.
+    \\
+    \begin{algorithmic}[2]
+    \scriptsize
+    \Function{Read}{$RowIndex, RowKey$}
+    \Statex \Return $\langle$Offsets in each $DataFile$ at which $ValueStore$ persisted $RowKey$, $RowEpoch \rangle$
+    \EndFunction
+    \end{algorithmic}
+
+\subparagraph{$ValueStore$}
+\subparagraph{}
+    One per partition. A sequential chunk of bytes that combines the position retrieved
+    from the $RowIndex$ with an offset stored in $DataFile_0$, the queried columns, the $ColId$ translation
+    and the $RowEpoch$ to return cell values. We assume a property $Pos$ can be queried prior to insertion
+    of a new row that returns the value we will store in $RowIndex$ for future lookups. It is stored in $DataFile$.
+    \\
+    \begin{algorithmic}[2]
+    \scriptsize
+    \Function{Read}{$ValueStore, ColIds, Pos, RowEpoch$}
+    \Statex \Return Values for the $ColIds$ persisted by $ValueStore$ at relative $Pos$
+    \EndFunction
+    \end{algorithmic}
+
+
+\section{Implementation Details}
+\subsection{Notation Key}
+\paragraph{}
+\begin{tabular}{l l}
+$X \Leftarrow Y$ & Write/Add/Append $Y$ To $X$\\
+$X \dashleftarrow Y$ & Read $X$ From $Y$\\
+$X \gets Y$ & Set $X$ to $Y$\\
+$\langle A,B \rangle$ & A tuple containing the values $A$ and $B$\\
+$\{Item | Constraint\}$ & The set of all $Item$ produced by $Constraint$\\
+$S_N$ & $\equiv \{S_n | n \in N\}$\\
+$Stmt_x | \forall x \in X$ & Execute statement $S$ for each $x$ in $X$\\
+$\lvert X \rvert$ & $\equiv \mathbf{card}(X)$, i.e. the number of elements in $X$\\
+\end{tabular}
+
+\subsection{Core Outline}
+\small
+This section will outline the core algorithm using the component definitions provided in the previous
+section. A basic description of the algorithm follows.
+\\\\
+\paragraph{Description}
+
+\begin{algorithm}
+\scriptsize
+\caption{Writing}
+\begin{algorithmic}[1]
+\Procedure{Write}{$Partitions$}
+\State $PartitionIndex, DataFile \gets $ \Call{New}{}
+\State $ColId \gets \{c \mapsto i \mid \forall c, d \in Columns, d < c \implies d \mapsto j \wedge j < i \}$
+\State $Metadata \Leftarrow ColId$
+\Statex
+\For{$p \gets Partitions$} 
+ \State $RowIndex, ValueStore \gets $ \Call{New}{}
+ \State $PartitionEpoch \gets \min \{v.timestamp \mid v \in r.Values, r \in p.Rows\}$
+ \Statex
+ \For{$r \gets p.Rows$}
+   \State $RowEpoch \gets \min \{v.timestamp \mid v \in r.Values\}$
+   \State $EpochDelta \gets RowEpoch - PartitionEpoch$
+   \State $RowIndex \Leftarrow \langle r.RowKey \mapsto \langle EpochDelta, ValueStore.Pos \rangle \rangle $ 
+   \State $Values \gets \{ ColId(c) \mapsto r.Values(c) \mid c \in Columns \}$
+   \State $v.Time \gets v.Time - RowEpoch \mid \forall v \in \mathbf{ran}(Values_{n})$
+   \State $ ValueStore \Leftarrow Values $
+ \EndFor
+\Statex
+ \State $Buffer \Leftarrow \langle p.PartitionKey, PartitionEpoch, RowIndex, ValueStore, DataFile.Pos \rangle$
+ \State $Size \gets DataFile.pos - \min\limits_{\forall b \in Buffer} b.Pos $
+ \If {$Size \geq PageSize$}
+   \State \Call{Flush}{$Flush, PartitionIndex, DataFile_{N}$}
+   \State $Buffer \gets $ \Call{New}{}
+ \EndIf
+\EndFor
+\State \Call{Flush}{$Buffer, PartitionIndex, DataFile_{N}$}
+\EndProcedure
+\Statex
+\Procedure{Flush}{$Buffer, PartitionIndex, DataFile_{N}$}
+   \State $PartitionIndex \Leftarrow \langle $\Call{Token}{$PartitionKey$}$ \mapsto DataFile.Pos \rangle \mid \forall PartitionKey \in Buffer$
+   \State $DataFile \Leftarrow \lvert Buffer \rvert$
+   \State $DataFile \Leftarrow $ \Call{Token}{$PartitionKey$} $ \mid \forall \langle PartitionKey, \_,\_,\_\rangle \in Buffer \rangle$
+   \State $Offset \gets 0$
+   \For{$\langle PartitionKey, \_, \_, \_ \rangle \gets Buffer$}
+     \State $DataFile \Leftarrow Offset$
+     \State $Offset \gets Offset + $ \Call{SizeOf}{$\langle PartitionKey, RowIndex, ValueStore,$\textsc{Epoch}$,$\{\textsc{Address}\}$\rangle$}
+   \EndFor
+   \For{$\langle PartitionKey, PartitionEpoch, RowIndex, ValueStore \rangle \gets Buffer$}
+    \State $DataFile \Leftarrow \langle PartitionEpoch, PartitionKey \rangle$
+    \State $DataFile \Leftarrow DataFile.Pos + $ \Call{SizeOf}{$RowIndex$} $ + $ \Call{SizeOf}{\{\textsc{Address}\}}
+    \State $DataFile \Leftarrow RowIndex$
+    \State $DataFile \Leftarrow ValueStore$
+   \EndFor
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+\scriptsize
+\caption{Reading}
+\begin{algorithmic}[2]
+\Function{Read}{$PartitionKey, Cols, RowKeys$}
+\State $ColGroup, ColId \dashleftarrow Metadata$
+\State $Token \gets $ \Call{Token}{$PartitionKey$}
+\State $CandidatePages \gets $\Call{Lookup}{$PartitionIndex, Token$}
+\For{$Page \gets CandidatePages$}
+ \State $Count \dashleftarrow DataFile[Page]$
+ \State $TokenBase \gets Page +  $ \Call{SizeOf}{\textsc{$Count$}}
+ \State $OffsetsBase \gets TokenBase + Count \times $\Call{SizeOf}{\textsc{Token}}
+ \For{$i \gets $ \Call{Find}{$DataFile[TokenBase \dots OffsetBase), Token$}}
+  \State $OffsetPosition \gets OffsetsBase + i \times $ \Call{SizeOf}{\textsc{Offset}}
+  \State $Offset \dashleftarrow DataFile[OffsetPosition]$
+  \State $PartitionEpoch, CandidateKey, Pos_N \dashleftarrow DataFile[Offset]$
+  \If{$PartitionKey = CandidateKey$} 
+   \State $Offset \gets Offset + $ \Call{SizeOf}{$\langle PartitionEpoch, CandidateKey, Pos \rangle$}
+   \State $RowIndex \gets DataFile[Offset]$
+   \State \Return \Call{Build}{$RowKeys, PartitionEpoch, ReadGroup, ColId, RowIndex, Pos, DataFile$}
+  \EndIf
+ \EndFor
+\EndFor
+\Return \textbf{nil}
+\EndFunction
+\Statex
+\Function{Build}{$RowKeys, PartitionEpoch, ColId, Pos, DataFile$}
+\State $Partition \gets $ \Call{New}{}
+\State $ValueStore \Leftarrow DataFile[Pos_n]$
+\For{$RowKey \gets RowKeys$}
+ \State $Pos, EpochDelta \gets$ \Call{Read}{$RowIndex, RowKey$}
+ \State $RowEpoch \gets PartitionEpoch + EpochDelta$
+ \State $Partition \Leftarrow $ \Call{Read}{$ValueStore, ColId(Columns), Pos, RowEpoch$}
+\EndFor
+\Return $Partition$
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+\clearpage
+\subsection{Extension One - Column Groupings}
+\small
+This section will outline the components and some associated concepts, before they are all used to define 
+a basic pseudocode implementation.
+\\\\
+\paragraph{Description}
+
+\paragraph{Definitions}
+\begin{itemize}
+  \item (Column) $Group_N$\\[2pt]
+    A subset of the columns defined on the table, that are stored together in a
+    corresponding $DataFile_N$. By default there will be one group containing all columns, 
+    but rarely accessed columns or columnar layouts may be separated into their own group.
+    The same mechanism can be used to separate the row index from row values by using
+    an empty initial group. It also supports duplication of cell data, for different access
+    patterns.
+  \item $ColId_N$\\[2pt]
+    A translation from column to a unique integer id within each $Group_N$
+    
+\end{itemize}
+
+\paragraph{Components}
+\begin{itemize}
+  \item $ValueStore_N$\\[2pt]
+    One per $Group_N$, per partition. Otherwise as defined originally.
+\end{itemize}
+
+\begin{algorithm}
+\scriptsize
+\caption{Writing}
+\begin{algorithmic}[1]
+\Procedure{Write}{$Partitions, Group_N$}
+\State $PartitionIndex, Buffer \gets $ \Call{New}{}
+\State $DataFile_{n} \gets $ \Call{New}{} $\mid \forall n \in N$
+\Statex
+\State $ColGroup \gets \{c \mapsto n \mid \forall c \in Group_{n}, \forall n \in N \}$
+\State $ColId_{n} \gets \{c \mapsto i \mid \forall c, d \in G, d < c \implies d \mapsto j \wedge j < i \} \mid \forall n \in N, G \equiv Group_{n}$
+\State $Metadata \Leftarrow ColGroup$
+\State $Metadata \Leftarrow ColId$
+\Statex
+\For{$p \gets Partitions$} 
+ \State $RowIndex \gets $ \Call{New}{}
+ \State $ValueStore_{n} \gets $ \Call{New}{} $ \mid \forall n \in N$
+ \State $PartitionEpoch \gets \min \{v.timestamp \mid v \in r.Values, r \in p.Rows\}$
+ \Statex
+ \For{$r \gets p.Rows$}
+   \State $RowEpoch \gets \min \{v.timestamp \mid v \in r.Values\}$
+   \State $EpochDelta \gets RowEpoch - PartitionEpoch$
+   \State $RowIndex \Leftarrow \langle r.RowKey \mapsto \langle EpochDelta, \{ v.Pos \mid v \in ValueStore_{N} \}\rangle \rangle $ 
+   \State $Values_{n} \gets \{ ColId(c) \mapsto r.Values(c) \mid c \in Group_{n} \} \mid \forall n \in N$
+   \State $v.Time \gets v.Time - RowEpoch \mid \forall v \in \mathbf{ran}(Values_{n}), \forall n \in N$
+   \State $ ValueStore_{n} \Leftarrow Values_{N} $
+ \EndFor
+\Statex
+ \State $Pos_{n} \gets DataFile_{n}.Pos | \forall n \in N$
+ \State $Buffer \Leftarrow \langle p.PartitionKey, PartitionEpoch, RowIndex, ValueStore_{N}, Pos_{N} \rangle$
+ \State $Size \gets \sum\limits_{n=0}^{N} (DataFile_{n}.pos - \min\limits_{\forall b \in Buffer} b.Pos_{n}) $
+ \If {$Size \geq N \times PageSize$}
+   \State $Flush \gets$ \Call{Select}{$Buffer$}
+   \State \Call{Flush}{$Flush, PartitionIndex, DataFile_{N}$}
+   \State $Buffer \gets $ \Call{new}{}
+ \EndIf
+\EndFor
+\State \Call{Flush}{$Buffer, PartitionIndex, DataFile_{N}$}
+\EndProcedure
+\Statex
+\Procedure{Flush}{$Buffer, PartitionIndex, DataFile_{N}$}
+   \State $PartitionIndex \Leftarrow \langle $\Call{Token}{$PartitionKey$}$ \mapsto DataFile_{0}.Pos \rangle \mid \forall PartitionKey \in Buffer$
+   \State $DataFile_{0} \Leftarrow \lvert Buffer \rvert$
+   \State $DataFile_{0} \Leftarrow $ \Call{Token}{$PartitionKey$} $ \mid \forall \langle PartitionKey, \_,\_,\_\rangle \in Buffer \rangle$
+   \State $Offset \gets 0$
+   \For{$\langle PartitionKey, \_, \_, \_ \rangle \gets Buffer$}
+     \State $DataFile_0 \Leftarrow Offset$
+     \State $Offset \gets Offset + $ \Call{SizeOf}{$\langle PartitionKey, RowIndex, ValueStore_0, $ \textsc{Epoch}$,$ \{\textsc{Address}$^N$\}$\rangle$}
+   \EndFor
+   \For{$\langle PartitionKey, PartitionEpoch, RowIndex, ValueStore_{N} \rangle \gets Buffer$}
+    \State $DataFile_{0} \Leftarrow \langle PartitionEpoch, PartitionKey \rangle$
+    \State $Pos_{n} \gets DataFile_{n}.Pos \mid \forall n \in N$
+    \State $Pos_{0} \gets Pos_0 + $ \Call{SizeOf}{$RowIndex$} $ + $ \Call{SizeOf}{\{\textsc{Address$^N$}\}}
+    \State $DataFile_{0} \Leftarrow Pos_{N}$
+    \State $DataFile_{0} \Leftarrow RowIndex$
+    \State $DataFile_{n} \Leftarrow ValueStore_{n} \mid \forall n \in N$
+    \State Pad $DataFile_{n}$ to a page boundary $\mid \forall n \in N$
+   \EndFor
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+\scriptsize
+\caption{Reading}
+\begin{algorithmic}[2]
+\Function{Read}{$PartitionKey, Cols, RowKeys$}
+\State $ColGroup, ColId_N \dashleftarrow Metadata$
+\State $ReadGroup_N \gets $ \Call{ReadGroups}{$Cols, GolGroup_N$}
+\State $Token \gets $ \Call{Token}{$PartitionKey$}
+\State $CandidatePages \gets $\Call{Lookup}{$PartitionIndex, Token$}
+\For{$Page \gets CandidatePages$}
+ \State $Count \dashleftarrow DataFile_{0}[Page]$
+ \State $TokenBase \gets Page +  $ \Call{SizeOf}{\textsc{$Count$}}
+ \State $OffsetsBase \gets TokenBase + Count \times $\Call{SizeOf}{\textsc{Token}}
+ \For{$i \gets $ \Call{Find}{$DataFile_0[TokenBase \dots OffsetBase), Token$}}
+  \State $OffsetPosition \gets OffsetsBase + i \times $ \Call{SizeOf}{\textsc{Offset}}
+  \State $Offset \dashleftarrow DataFile_{0}[OffsetPosition]$
+  \State $PartitionEpoch, CandidateKey, Pos_N \dashleftarrow DataFile_{0}[Offset]$
+  \If{$PartitionKey = CandidateKey$} 
+   \State $Offset \gets Offset + $ \Call{SizeOf}{$\langle PartitionEpoch, CandidateKey, Pos_N \rangle$}
+   \State $RowIndex \gets DataFile_0[Offset]$
+   \State \Return \Call{Build}{$RowKeys, PartitionEpoch, ReadGroup_N, ColId_N, RowIndex, Pos_N, DataFile_N$}
+  \EndIf
+ \EndFor
+\EndFor
+\Return \textbf{nil}
+\EndFunction
+\Statex
+\Function{Build}{$RowKeys, PartitionEpoch, ReadGroup_N, ColId_N, Pos_N, DataFile_N$}
+\State $Partition \gets $ \Call{New}{}
+\State $ValueStore_n \Leftarrow \langle DataFile_n[Pos_n] \rangle \mid \forall n \in N$
+\For{$RowKey \gets RowKeys$}
+ \State $Row \gets $ \Call{New}{}
+ \State $Pos_N, EpochDelta \gets$ \Call{Read}{$RowIndex, RowKey$}
+ \State $RowEpoch \gets PartitionEpoch + EpochDelta$
+ \For{$n \gets N : ReadGroup_n \neq \emptyset$}
+  \State $Row \Leftarrow $ \Call{Read}{$ValueStore, ColId_n(ReadGroup_n), Pos_n, RowEpoch$}
+ \EndFor
+ \State $Partition \Leftarrow Row$
+\EndFor
+\Return $Partition$
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+\clearpage
+\subsection{Extension Two - Partition Reordering}
+\small
+    An sstable represents an ordered collection of partitions, however this doesn't
+    actually require the data be in order on disk. If we permit the records to appear
+    out of order, this could permit us to ensure few records cross a page boundary,
+    reducing the number of IOPs needed per query, increasing system throughput and reducing
+    maximum query latency. For linear scan performance we want records to be \emph{almost} 
+    in order, so we define a $BufferLimit$ which bounds the amount of buffer space any reader can
+    be required to use to ensure it can produce its results in their true order, and at flush we 
+    ensure this property is enforced. We do this by buffering some multiple $K$ of $BufferLimit$ during 
+    flush, and selecting from this buffer a well packed page to write that favours records earlier
+    on in the stream, while leaving a good distribution of records to help pack future pages.
+
+\begin{algorithm}
+\scriptsize
+\caption{Writing}
+\begin{algorithmic}[1]
+\Procedure{Write}{$Partitions, Group_N$}
+\State $\dots$
+\Statex
+\For{$p \gets Partitions$} 
+ \State $\dots$
+ \State $Distance \gets \sum\limits_{n=0}^{N} (DataFile_{n}.pos - \min\limits_{\forall b \in Buffer} b.Pos_{n}) $
+ \If {$Distance \geq K \times BufferLimit$}
+   \State $Flush \gets$ \Call{Select}{$Buffer$}
+   \State \Call{Flush}{$Flush, PartitionIndex, DataFile_{N}$}
+   \State $Buffer \gets Buffer \setminus Flush$
+ \EndIf
+\EndFor
+\EndProcedure
+\Statex
+\Function{Select}{$Buffer$}
+\State $Selection \gets$ ?
+\Ensure $Selection \subseteq Buffer$
+\Ensure $s \in Selection \cdot s.Pos = \min\limits_{\forall b \in Buffer} b.Pos_{n}$
+\Ensure ($\exists k \cdot \sum\limits_{s \in Selection} s.Size_{n} \approx k \times PageSize) \mid \forall n \in N $
+\Ensure Future calls to \Call{Select}{} can also meet criteria
+\State \Return $Selection$
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+\scriptsize
+\caption{Reading}
+\begin{algorithmic}[2]
+\Procedure{Scan}{$StartToken, EndToken, Cols, RowKeys, Out$}
+\State $ColGroup, ColId_N \dashleftarrow Metadata$
+\State $Read_N \gets $ \Call{ReadGroups}{$Cols, GolGroup_N$}
+\For{$Page \gets $\Call{Range}{$PartitionIndex, Start, End$}}
+ \State $Count \dashleftarrow DataFile_{0}[Page]$
+ \State $TokenBase \gets Page +  $ \Call{SizeOf}{\textsc{$Count$}}
+ \State $OffsetsBase \gets TokenBase + Count \times $\Call{SizeOf}{\textsc{Token}}
+ \For{$0 \leq i < Count$}
+  \State $TokenPosition \gets BasePos + i \times $ \Call{SizeOf}{\textsc{Token}}
+  \State $Token \gets DataFile_0[TokenPosition]$
+  \If{$StartToken \leq Token < EndToken$}
+   \State $OffsetPosition \gets OffsetsBase + i \times $ \Call{SizeOf}{\textsc{Offset}}
+   \State $Offset \dashleftarrow DataFile_{0}[OffsetPosition]$
+   \State $PartitionEpoch, PartitionKey, Pos_N, RowIndex \dashleftarrow DataFile_{0}[Offset]$
+   \State $Buffer \Leftarrow $ \Call{Build}{$RowKeys, PartitionEpoch, ReadGroup_N, ColId_N, RowIndex, Pos_N, DataFile_N$}
+   \State $BufferSize \gets $ \Call{SizeOf}{$Buffer$}
+   \If{$BufferSize \geq BufferLimit$}
+    \State $Out \Leftarrow \min(Buffer)$
+    \State $Buffer \gets Buffer / {\min(Buffer)}$
+   \EndIf
+  \EndIf
+ \EndFor
+\EndFor
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\clearpage
+\subsection{Notes}
+\small
+\paragraph{Large Partitions}
+\paragraph{}
+    These pseudocode implementations have ignored certain complexities of dealing with very large
+    partitions, and assumes we can assemble the entire partition in memory. This was to keep
+    the complexity to a minimum. To solve this problem,
+    partitions with a $RowIndex$ spread across many pages can be filtered into a separate
+    file, with $Group_0$ being shifted to $Group_{-1}$, so that no values are stored alongside
+    the $RowIndex$. Thus we do not need to know its length, since there is no $ValueStore_0$ to locate.
+    Since only one partition will be serialized we also do not need to know the position of the next $RowIndex$.
+\paragraph{Dynamic Block Size}
+\paragraph{}
+    At a minimum each file should select a block size optimal for the data distribution being written to it, 
+    and the storage medium. For SSDs this should mean a block size just large enough to fit a single partition, 
+    or just its row index, if such a block size exists; otherwise, a 4Kb block size (also a minimum block size).
+    For spinning disks, a larger block size can be used unconditionally; say 32-64Kb, as is currently the case.
+    We should consider/explore using a dynamic block size within each file.
+\paragraph{Decoupling of $ValueStore_N$ from $DataFile_N$}
+\paragraph{}
+    There's not actually a requirement that each $ValueStore_n$ has its own $DataFile_n$, nor that a collection
+    of alike $ValueStore_N$ could not be grouped to be indexed by the same $RowIndex$ entry (pure column oriented
+    value stores can all be indexed by the same key). This is a simple addition, but complicates the pseudocode
+    unnecessarily.
+
+\clearpage
+\section{Component Variants}
+Here we will outline some categories and details of implementation variants for each component.
+
+\subsection{Partition Index}
+The partition index most likely needs just two implementations, although it may be that subtle variations
+of each are tried over time. The implementations depend on the nature of partitioning scheme, which
+fall into two categories: Ordered and Hashed.
+\paragraph{Ordered}
+\paragraph{}
+    The obvious choice is a B\textsuperscript{+}-tree, although since our data is static some alternatives are viable.
+    Since this partitioning scheme is uncommon, however, the labour may not be worth investing in a new approach,
+    and a simplification of the current scheme may be sensible. The only difference is that each page has its own
+    mini-index, so we only need to store the start and end tokens for each page. This translates roughly to 
+    the sstable representing the bottom three levels of a B\textsuperscript{+}-tree, with the highest 
+    remaining resident in memory as our summary, and the middle being the highly cacheable index.
+\paragraph{Hashed}
+\paragraph{}
+    There are a multitude of ways the hash layout can be exploited, that are out of scope for this document. 
+    Here we will outline
+    a method that in many cases should permit single IOPs for each read while occupying very little 
+    resident memory, however the efficiency of the technique will vary based on partition size distributions.
+    \\\\
+    The principle is quite simple: given a good quality hash function (and in conjunction with 
+    \href{https://issues.apache.org/jira/browse/CASSANDRA-6696}{CASSANDRA-6696}), if the partitions are
+    all of equal size we can know exactly where to seek for a record that \textit{does} exist: if there
+    are $N$ pages, representing $StartToken$ and $EndToken$, then we should look in page $N \times \dfrac{Token - StartToken}{EndToken - StartToken}$
+    \\\\
+    However, not all partitions will be the same size. So we perform this calculation for each stored token
+    and compare against the truth. We build a tree that maps ranges of tokens to the maximum degree 
+    of inaccuracy for that range, along with corrections for subranges that are actually out. The tree is
+    then traversed until the inaccuracy is low enough to guarantee we are within the right page if the item
+    exists in the table. For lookups touching the middle item in a page this will occur rapidly, whereas those
+    on the edges may take a few more steps. For uniform data distributions and small records this should 
+    permit strong compression. In cases where it does not, we can fallback to a simple array of the boundaries
+    for each page, which can be indexed into in a similar fashion, with a binary search being performed within
+    the probabilistic bounds the boundary should be found in.
+\begin{algorithm}
+\scriptsize
+\caption{Hash Partition Lookup}
+\begin{algorithmic}[2]
+\Function{Lookup}{$PartitionIndex, PartitionKey$}
+\State $Hash \gets $ \Call{Hash}{$PartitionKey$}
+\State $Position$
+\State \Return All positions possibly containing $PartitionKey$
+\EndFunction
+
+\end{algorithmic}
+\end{algorithm}
+    
+\small
+\paragraph{Out of Order Records}
+\paragraph{}
+    In both cases out-of-order persistence is permitted, and to support this a generalized pre-index
+    may be useful, in which we store the few tokens we have permitted to be re-ordered. Lookups hit
+    this index first, and on finding no results fallback to the normal index.
+
+\subsection{Row Index}
+The Row Index has by far the most scope for variation, so we will only touch briefly on the various
+categories here, with a high level overview of their implications. We will mention retrieval and
+merge performance, by intuitive description of characteristics only.
+\paragraph{Entry Per Cell}
+\paragraph{}
+    This isn't really possible in the new world, but is worth discussing for comparison since it
+    describes the current situation. Here we have each clustering prefix repeated once per cell.
+    The cost of merging is as suboptimal as possible: 
+    \begin{enumerate}
+      \item There are $\lvert Columns \rvert$ more items to merge than necessary
+      \item Shared clustering prefixes must be compared in full, so each comparison is costlier
+      \item All rows must be compared; there is no pruning of known disjoint descendant sets 
+    \end{enumerate}
+\paragraph{Linear Collection}
+\paragraph{}
+    This is the closest to the current scenario, except that we only repeat the data once per row,
+    and not once per cell. The idea would be to print each complete clustering prefix in sequence,
+    and linearly scan for the relevant record. For very large partitions this would not support 
+    any true indexing, but it is very simple, and for small partitions would be fine, and optimal
+    for single rows. The cost of merging is improved by eliminating (1)
+\paragraph{Column Trie, Linear Internal Collections}
+\paragraph{}
+    The next simplest approach is to split each clustering column into its own set of linear
+    sequences of data, so that with multiple clustering columns we do not repeat data present
+    in prior tiers. This permits data compression. Merging is also improved by significantly
+    reducing the effects of (2) and (3). For partitions whose clustering column tiers are 
+    each smaller than a single page this is a fairly optimal approach as binary search 
+    can be performed on each tier as you descend.
+\paragraph{Column Trie, BTree Internal Collections}
+\paragraph{}
+    When the trie levels are larger than a page, we need to introduce paging, and to do this a
+    BTree makes perfect sense. This is still a very general collection, since any kind of comparison
+    can be performed on each BTree item, so it can support all current and custom data types.
+    This optimisation permits further improvement to (3) for merging, as well as optimal
+    search costs for custom data types. 
+\paragraph{Binary Trie}
+\paragraph{}
+    If the clustering prefixes can be compared in bit-order, a binary trie can be used.
+    This permits optimal behaviour for all of (1), (2) and (3), making merges extremely
+    cheap as the number of rows and partitions grow, which is likely to be of significant benefit,
+    given how CPU constrained some users are on these costs. This also permits superior
+    data compression. There are a number of possible binary trie variants to explore, but this
+    warrants a separate document or JIRA ticket to discuss the options.
+
+\subsection{Value Store}
+The value store generally has only two major variants, and a hybrid between the two: column- and row-oriented.
+There is no requirement that a given table subscribe to one or the other, however. Within a single sstable
+there can be a mix, with each field grouping selecting its own value persistence approach.
+\paragraph{Row Oriented}
+\paragraph{}
+This most closely resembles the current storage, except that we consider each row a discrete unit
+and encode certain information prefixing it to permit indexed access within the row, and to permit
+compression of the structural data.
+\begin{itemize}
+\scriptsize
+  \item $HasCell$ Bitmap\\[2pt]
+    Each column that occurs at least once in the file will have an index in this bitmap, which encodes
+    if the column appears in this row, to permit efficient indexing within the row. It may be that some
+    columns appear in every row, and these may be encoded in the file metadata to remove them from the
+    row bitmaps
+  \item $HasTimestamp$ Bitmap\\[2pt]
+    Each column with its bit \textit{set} in $HasCell$ will have an index in $HasTimestamp$; this 
+    will indicate if there is any timestamp offset necessary from $RowEpoch$; a value of zero 
+    indicates $RowEpoch$ is enough by itself to construct the cell timestamp.
+  \item $HasValue$ Bitmap\\[2pt]
+    Each column with its bit \textit{set} in $HasCell$ will have an index in $HasValue$; this 
+    will indicate if there is any actual data associated, or if the "value" is a tombstone
+  \item $HasExpiry$ Bitmap\\[2pt]
+    Each column with its bit \textit{set} in $HasValue$ will have an index in $HasExpiry$; this 
+    will indicate if there is an expiry associated with the value.
+  \item $HasInfo$ Bitmap\\[2pt]
+    A bitmap indicating if $HasCell$, $HasTimestamp$, $HasValue$ or $HasExpiry$ are necessary to 
+    encode.
+  \item $TimestampLength$\\[2pt]
+    If any bits are set in $HasTimestamp$, this will encode how many bytes are needed to encode them.
+    Each will be encoded with the same width. This and $HasInfo$ can be encoded in the same byte.
+  \item $Timestamps$\\[2pt]
+    A fixed-width array of timestamps for each column marked in $HasTimestamp$
+  \item $Expiries$\\[2pt]
+    A fixed-width array of expiries for each column marked in $HasExpiry$
+  \item $ColumnWidth : ColId \mapsto \mathbb{N}$\\[2pt]
+    A table level property indicating which columns are fixed width, and their widths. A value of $\infty$
+    indicates the column is dynamic width.
+  \item $ColumnCount$\\[2pt]
+    A table level property indicating the number of columns persisted against this value store
+  \item $Values_B$\\[2pt]
+    The cells appearing in $HasValue$ whose types permit fixed-width encoding of length $B$ will appear next, 
+    so that they may indexed directly without any further information. All columns will appear grouped by
+    size, but also in $ColId$ order; we will construct $ColId$ to enforce this at write-time.
+  \item $Offsets$\\[2pt]
+    The index of any dynamic length fields present in $HasValue$ will follow, so that they may also be 
+    accessed directly. Encoded as $Values_{\infty}$.
+  \item $DValues$\\[2pt]
+    Finally we encode the dynamic length fields themselves.
+\end{itemize}
+
+\subparagraph{Notes}
+\begin{itemize}
+ \item{} It is necessary that our bitmaps support efficient rank operations, i.e. count the number of bits
+ less than an index. For small bitmaps ($\leq$ 64 bits) this is trivial, but for larger bitmaps
+ it requires a little extra data to implement efficiently. However it may be easiest to encode rows
+ as linked-lists of $\leq$ 64 possible columns, since more should be rare.
+ \item{} The pseudocode implementation assumes we read all of our bitmaps out of the row, but this is unnecessary
+ and done only for clarity 
+ \item{} To help read implementation, we select $ColId$ values that correspond to the size of the column, with 
+ dynamically sized columns occurring last. This permits us to walk the columns that are being queried in the order
+ the data is stored on disk, and to perform fewer calculations to know index into it, 
+\end{itemize}
+
+\begin{algorithm}
+\scriptsize
+\caption{Row Oriented Value Retrieval}
+\begin{algorithmic}[2]
+\Function{Read}{$ValueStore, ColIds, Pos, RowEpoch$}
+\State $HasInfo, TimestampLength \dashleftarrow ValueStore$
+\State $HasCell, HasValue \dashleftarrow ValueStore$
+\State $HasTimestamp, HasExpiry, Timestamps, Expiries \gets \emptyset$
+\If {$'HasCell' \in HasInfo$}
+ \State $HasCell \dashleftarrow ValueStore[\dots $\tiny$\dfrac{ColumnCount}{8})$\scriptsize
+\EndIf
+\If {$'HasTimestamp' \in HasInfo$}
+ \State $HasTimestamp \dashleftarrow ValueStore[\dots $\tiny$\dfrac{\lvert HasCell \rvert}{8})$\scriptsize
+\EndIf
+\If {$'HasValue' \in HasInfo$}
+ \State $HasValue \dashleftarrow ValueStore[\dots $\tiny$\dfrac{\lvert HasCell \rvert}{8})$\scriptsize
+\EndIf
+\If {$'HasExpiry' \in HasInfo$}
+ \State $HasExpiry\dashleftarrow ValueStore[\dots $\tiny$\dfrac{\lvert HasValue \rvert}{8})$\scriptsize
+\EndIf
+\If {$\lvert HasTimestamp \rvert > 0$}
+ \State $Timestamps \dashleftarrow ValueStore[\dots $\tiny$\lvert HasTimestamp \rvert \times TimestampLength)$\scriptsize
+\EndIf
+\If {$\lvert HasExpiry \rvert > 0$}
+ \State $Expiries \dashleftarrow ValueStore[\dots $\tiny$\lvert HasExpiry \rvert \times 8)$\scriptsize
+\EndIf
+\Statex
+\State $Row \gets $ \Call{New}{}
+
+\State $Width, WidthStart, WidthEnd \gets 0, 0, 0$
+\For{$ColId \gets ColIds$}
+ \If{$ColId \in HasValue$}
+  \State $Expiry \gets 0$
+  \State $Timestamp \gets RowEpoch$
+  \If{$ColId \in HasTimestamp$}
+   \State $Timestamp \gets Timestamp + Timestamps[$\Call{Rank}{$ColId, HasTimestamp$}$]$
+  \EndIf
+  \If{$ColId \notin HasValue$}
+   \State $Row \Leftarrow \langle ColId, Timestamp, 'Deleted', Expiry \rangle$
+  \Else
+   \If{$ColId \in HasExpiry$}
+    \State $Expiry \gets Expiries[$\Call{Rank}{$ColId, HasExpiry$}$]$
+   \EndIf
+   \If{$ColumnWidth(ColId) \neq Width$}
+    \State $PrevWidth, Width \gets Width, ColumnWidth(ColId)$
+    \For{$Fetch \gets \{ w \mid w \in \mathbf{ran}(Width), PrevWidth < w \leq Width\}$}
+     \State $LastColId \gets \max{\{ColId \mid ColumnWidth(ColId) = Fetch\}}$
+     \State $WithStart \gets WidthEnd$
+     \State $WidthEnd \gets 1 + $ \Call{Rank}{$HasValue,LastColId$}
+     \State $Count \gets WidthEnd - WidthStart$
+     \State $Values_{Fetch} \dashleftarrow ValueStore[\dots Count \times Fetch)$
+    \EndFor
+   \EndIf
+   \If{$Width \neq \infty$}
+    \State $Value \dashleftarrow Values_{Width}[WidthStart + $ \Call{Rank}{$HasValue,ColId$}$]$
+   \Else
+    \State $Index \gets WidthStart + $ \Call{Rank}{$HasValue,ColId$}
+    \State $StartOffset \dashleftarrow Values_{\infty}[Index]$
+    \State $EndOffset \dashleftarrow Values_{\infty}[Index + 1]$
+    \State $Value \dashleftarrow ValueStore[StartOffset \dots EndOffset)$
+   \EndIf
+   \State $Row \Leftarrow \langle ColId, Timestamp, Value, Expiry \rangle$
+  \EndIf
+ \EndIf
+\EndFor
+\State \Return $Row$
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+\clearpage
+\paragraph{Column Oriented}
+\paragraph{}
+Full column-oriented storage supports only fixed-width data types, and is comparatively trivial to define:
+each row is assigned an index within the partition, and every single column-oriented store multiplies this
+with its base offset and the width of the data type to locate the position where data is stored. No muss, no fuss.
+\paragraph{Hybrid}\normalsize{(Fixed-Width Block Encoding)}
+\paragraph{}
+The idea here is to exploit fixed-width and densely populated data distributions to further compress
+data storage requirements, and make indexing to a given row/column involve fewer computational steps.
+The basic idea is to store all of the values in a column-oriented fashion within a single data page only,
+so a row index would store the page number, and the row offset within the page. The goal is to support
+row-oriented workloads, just more efficiently. This model could support non-fixed-width types, but there
+is probably little benefit to be had when these could be stored in a row-oriented scheme as easily.
+ \begin{itemize}
+\scriptsize
+  \item $TimestampSize$\\[2pt]
+    Occupying 2 bits per field in the row, indicates the size of timestamp encoding, with 0 indicating
+    all values are equal to the row epoch; 1: 2 bytes; 2: 4 bytes; 3: 8 bytes.
+    This must support efficient rank operations, like bitmaps for row-oriented storage, but based on
+    cumulative value as opposed to index.
+  \item $IsDeleted$ Bitmap[2pt]
+    Encoded once per row, if $HasDeleted$ is set. A bitmap to be checked before returning the value
+    encoded, that indicates is the cell is deleted. Treated as a pseudo column, of fixed width
+  \item $HasDeleted$ Boolean\\[2pt]
+    Indicates if $IsDeleted$ is present
+  \item $HasExpiry$ Bitmap\\[2pt]
+    Bitmap indicating which columns need to save expiry and deleted information
+  \item $ColumnWidth$ Bitmap\\[2pt]
+    Must also support a cumulative value rank based on fixed-width size, but this can be precomputed
+  \item $ColumnCount$\\[2pt]
+    A table level property indicating the number of columns persisted against this value store
+\end{itemize}
+
+\begin{algorithm}
+\scriptsize
+\caption{Hybrid Value Retrieval}
+\begin{algorithmic}[2]
+\Function{Read}{$ValueStore, ColIds, Pos, RowEpoch$}
+\State $TimestampSize, HasExpiry, HasDeleted \dashleftarrow ValueStore$
+\State $Row \gets $ \Call{New}{}
+\State $IsDeletedId \gets ColumnCount$
+\If{$HasDeleted$}
+ \State $ColumnWidths \gets ColumnWidths \cup \{ IsDeletedId \mapsto $\tiny$\dfrac{IsDeletedId}{8}$\scriptsize$\}$
+ \State $TimestampSize \gets TimestampSize \cup \{ IsDeletedId \mapsto 0\}$
+ \State $ColIds \gets ColIds \cup \{ IsDeletedId \}$
+\Else
+ \State $ColumnWidths \gets ColumnWidths \cup \{ IsDeletedId \mapsto 0\}$
+\EndIf
+
+\State $RowLength \gets ColumnWidths(IsDeletedId) + \lvert HasExpiry \rvert \times 4 + \sum{TimestampSize}$
+\State $IsDeleted \gets \emptyset$
+\If{$HasDeleted$}
+ \State $Index \gets RowLength \times (Pos + 1) - ColumnWidth(IsDeletedId)$
+ \State $IsDeleted \dashleftarrow ValueStore[Index \dots Index + ColumnWidth(IsDeletedId))$
+\EndIf
+\For{$ColId \gets ColIds$}
+ \State $Index \gets $\Call{Rank}{$HasExpiry, ColId$} $\times 4$
+ \State $Index \gets Index + $\Call{Rank}{$HasTimestamp, ColId$}
+ \State $Index \gets Index + $\Call{Rank}{$HasDeleted, ColId$}
+ \State $Index \gets Index + $\Call{Rank}{$ColumnWidth, ColId$}
+ \State $Expiry, Timestamp \gets 0, RowEpoch$
+ \If{$ColId \in HasExpiry$}
+  \State $Expiry \gets ValueStore[Index\dots Index + 4)$
+  \State $Index /gets Index + 4$
+ \EndIf 
+ \State $Timestamp \gets ValueStore[Index \dots Index+TimestampSize(ColId)]$
+ \State $Index \gets Index+TimestampSize(ColId)$
+ \If{$ColId \in IsDeleted$}
+  \State $Value \gets 'Deleted'$
+ \Else
+  \State $Value \gets ValueStore[Index \dots Index + ColumnWidth(ColId))$
+ \EndIf
+ \State $Row \Leftarrow \langle ColId, Timestamp, Value, Expiry \rangle$
+\EndFor
+\State \Return $Row$
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+
+\end{document}

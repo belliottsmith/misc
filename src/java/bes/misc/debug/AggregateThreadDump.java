@@ -17,9 +17,14 @@ public class AggregateThreadDump
                                                  "|- waiting on <[0-9a-fx]+>" +
                                                  "|- locked <[0-9a-fx]+>" +
                                                  "|at " +
+                                                 "| - " +
                                                  ").*");
 
-    static final Pattern STATE = Pattern.compile("\\s*java\\.lang\\.Thread\\.State: ([A-Z_]+).*");
+    static final Pattern STATE = Pattern.compile("\\sjava\\.lang\\.Thread\\.State: ([A-Z_]+).*");
+
+    static final Pattern ECLIPSE_THREAD = Pattern.compile("Thread 0x[a-z0-9]+");
+
+    static final Pattern JDK8_THREAD = Pattern.compile("\\s*Thread ([0-9xa-z]+): \\(state = ([A-Z_]+)\\)");
 
     static final Pattern REPLACE = Pattern.compile("<[0-9a-fx]+>");
 
@@ -48,9 +53,14 @@ public class AggregateThreadDump
                 Matcher m = TRACE.matcher(line);
                 if (!m.matches())
                 {
-                    if (trace.length() == 0)
+                    if (trace.length() == 0 || ECLIPSE_THREAD.matcher(line).matches())
                     {
                         thread = line;
+                    }
+                    else if ((m = JDK8_THREAD.matcher(line)).matches())
+                    {
+                        thread = m.group(1);
+                        state = m.group(2);
                     }
                     else
                     {
@@ -87,6 +97,8 @@ public class AggregateThreadDump
         states.addAll(stateToTraceToThread.keySet());
         for (String state : states)
         {
+            if (!stateToTraceToThread.containsKey(state))
+                continue;
             List<Map.Entry<String, Collection<String>>> traces = new ArrayList<>(stateToTraceToThread.get(state).entrySet());
             Collections.sort(traces, new Comparator<Map.Entry<String, Collection<String>>>()
             {

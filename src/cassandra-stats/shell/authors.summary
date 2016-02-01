@@ -1,0 +1,269 @@
+committer:
+        benedict:     43 changes,  16177+,   9113-    (7519:1923, 4718:1408, 6916:1226, 6781:1149, 6755: 411, 6236: 373, 7107: 360, 6934: 308)
+        jonathan:     98 changes,  11415+,   6301-    (5549:3542, 6271:2211, 6381:2145, 6927: 357)
+         sylvain:    109 changes,  10471+,   4946-    (6713:1444, 6561:1356, 6855:1102, 6311: 875, 7248: 394, 7155: 368, 6975: 338)
+           pavel:      8 changes,   5508+,   2870-    (6694:4041, 6689: 974, 6835: 409)
+      iamaleksey:     82 changes,   4962+,   4885-    (6505: 372, 6379: 338)
+         brandon:     78 changes,   4604+,   5251-    (6927: 662, 7273: 389)
+           tyler:     29 changes,   3287+,   1065-    (6875:2025, 6839: 535)
+          marcus:     34 changes,   2700+,    864-    (5153:1012, 6745: 370, 5357: 327)
+           yukim:     29 changes,   1443+,    630-    (7585: 328)
+            jake:     18 changes,   1287+,    740-    
+           jason:      7 changes,    529+,    211-    
+           vijay:      8 changes,    384+,    216-    
+            dave:     25 changes,    166+,    188-    
+           total:    568 changes,  62933+,  37280-
+
+author:
+        benedict:     60 changes,  27603+,  13853-    (6694:4041, 5549:3542, 6271:2211, 7519:1923, 4718:1408, 6916:1256, 6781:1149, 6689: 974, 6755: 411, 6835: 409, 6236: 373, 7107: 360, 6934: 308)
+            jake:     15 changes,   6854+,   4606-    (6755: 411)
+         sylvain:     71 changes,   6757+,   4359-    (6561:1356, 6855:1102, 7248: 394, 7499: 370, 7155: 368, 6975: 338, 5357: 327)
+      iamaleksey:     51 changes,   3928+,   3816-    (6504: 953, 6505: 372, 7107: 360)
+           tyler:     29 changes,   3695+,   1300-    (6875:2028, 6839: 535, 6379: 338)
+           yukim:     22 changes,   2866+,    603-    (6713:1444, 7585: 328)
+         marcuse:     24 changes,   2372+,    726-    (5153:1012, 6745: 370, 5357: 327)
+         clément:      3 changes,   2252+,   1845-    (6381:2145)
+       alexliu68:      3 changes,   2034+,     41-    (6311:1989)
+             sam:      9 changes,    948+,    425-    (6927: 662)
+            alex:      4 changes,    647+,     45-    (6454: 590)
+            josh:      7 changes,    645+,    261-    (3668: 495)
+         brandon:     22 changes,    468+,   3824-    
+        jonathan:     14 changes,    467+,    547-    
+       jasobrown:      3 changes,    467+,    173-    (6503: 441)
+         sankalp:      7 changes,    395+,    103-    
+            oleg:      6 changes,    373+,    120-    
+          lyuben:      6 changes,    345+,    247-    
+          sergio:      7 changes,    236+,    152-    
+           vijay:      5 changes,    232+,    153-    
+        rspitzer:      3 changes,    205+,    194-    
+         mikhail:      7 changes,    165+,     50-    
+            mike:      3 changes,    165+,     26-    
+          blerer:      3 changes,    138+,     91-    
+           total:    384 changes,  64257+,  37560-
+
+unknown author:
+        benedict:      3 changes,   1447+,    986-    
+      iamaleksey:      5 changes,    702+,   1174-    
+         sylvain:      4 changes,    215+,    199-    
+         brandon:      5 changes,    165+,     93-    
+            dave:      5 changes,    136+,    177-    
+           total:     22 changes,   2665+,   2629-
+
+reviewer:
+                :    157 changes,  16517+,  10328-    (6875:2025, 5153:1012, 6689: 974, 6839: 535, 6755: 411, 7107: 360, 5357: 327)
+        jonathan:     74 changes,   7893+,   4437-    (5549:3542, 6271:2211)
+         brandon:     42 changes,   3696+,   1619-    (7273: 389)
+      iamaleksey:     60 changes,   3659+,   1902-    (6561:1356, 6379: 338)
+         sylvain:     43 changes,   3652+,   3049-    (6236: 373, 6505: 372, 6745: 370, 6934: 308)
+          thobbs:     40 changes,   3390+,   5542-    (6855:1102, 7248: 394, 7155: 368)
+            jake:     15 changes,   2993+,   1166-    (7519:1923, 6927: 662)
+         marcuse:     15 changes,   2912+,   1601-    (6916:1226, 6781:1149)
+         mikhail:      3 changes,   2188+,   1820-    (6381:2145)
+         sankalp:      4 changes,   1649+,     88-    (6713:1444)
+        benedict:     32 changes,   1584+,   1241-    
+           jason:      6 changes,   1482+,    208-    (4718:1408)
+           yukim:     15 changes,   1293+,    491-    (3668: 495)
+           pavel:      6 changes,    918+,    503-    (6835: 409)
+           tyler:     12 changes,    861+,    276-    (7111: 312)
+         krummas:      7 changes,    584+,    213-    (7585: 328)
+           piotr:      5 changes,    429+,    328-    (6927: 357)
+            carl:      3 changes,    394+,     40-    
+          lyuben:      4 changes,    214+,     44-    
+       jasobrown:      3 changes,    158+,     57-    
+         richard:      7 changes,    154+,     33-    
+           vijay:      6 changes,    131+,     80-    
+           total:    559 changes,  56751+,  35066-
+
+big tickets:
+  benedict
+        6694 (4041+): Slightly More Off-Heap Memtables
+        5549 (3542+): Remove Table.switchLock
+        6271 (2211+): Replace SnapTree in AtomicSortedColumns
+        7519 (1923+): Further stress improvements to generate more realistic workloads
+        4718 (1408+): More-efficient ExecutorService for improved throughput
+        6916 (1256+): Preemptive opening of compaction result
+        6781 (1149+): ByteBuffer write() methods for serializing sstables
+        6689 ( 974+): Partially Off Heap Memtables
+        6755 ( 411+): Optimise CellName/Composite comparisons for NativeCell
+        6835 ( 409+): cassandra-stress should support a variable number of counter columns
+        6236 ( 373+): Update native protocol server to Netty 4
+        7107 ( 360+): General minor tidying of CollationController path
+        6934 ( 308+): Optimise Byte + CellName comparisons
+  jake
+        6755 ( 411+): Optimise Byte + CellName comparisons
+  sylvain
+        6561 (1356+): Static columns in CQL3
+        6855 (1102+): Native protocol V3
+        7248 ( 394+): Tuple type
+        7499 ( 370+): Unable to update list element by index using CAS condition
+        7155 ( 368+): Followup to 6914: null handling, duplicate column in resultSet and cleanup
+        6975 ( 338+): Allow usage of QueryOptions in CQLStatement.executeInternal
+        5357 ( 327+): Query cache / partition head cache
+  iamaleksey
+        6504 ( 953+): counters++
+        6505 ( 372+): counters++ global shards 2.0 back port
+        7107 ( 360+): counters++ global shards 2.0 back port
+  tyler
+        6875 (2028+): CQL3: select multiple CQL rows in a single partition using IN
+        6839 ( 535+): Support non equal conditions (for LWT)
+        6379 ( 338+): Replace index_interval with min/max_index_interval
+  yukim
+        6713 (1444+): Snapshot based repair does not send snapshot command to itself
+        7585 ( 328+): cassandra sstableloader connection refused with inter_node_encryption
+  marcuse
+        5153 (1012+): max client timestamp
+        6745 ( 370+): Require specifying rows_per_partition_to_cache
+        5357 ( 327+): Require specifying rows_per_partition_to_cache
+  clément
+        6381 (2145+): Refactor nodetool
+  alexliu68
+        6311 (1989+): Add CqlRecordReader to take advantage of native CQL pagination
+  chris
+        7273 (1219+): expose global ColumnFamily metrics
+  lyubent,
+        5153 (1012+): expose global ColumnFamily metrics
+  xedin;
+        6689 ( 974+): expose global ColumnFamily metrics
+  sam
+        6927 ( 662+): Create a CQL3 based bulk OutputFormat
+  ben
+        5201 ( 783+): Cassandra/Hadoop does not support current Hadoop releases
+  alex
+        6454 ( 590+): Pig support for hadoop CqlInputFormat
+  josh
+        3668 ( 495+): Parallel streaming for sstableloader
+  brandon
+  jonathan
+  jasobrown
+        6503 ( 441+): sstables from stalled repair sessions become live after a reboot and can resurrect deleted data
+  sankalp
+  oleg
+  paul
+        6927 ( 357+): sstables from stalled repair sessions become live after a reboot and can resurrect deleted data
+  lyuben
+  benjamin
+        7111 ( 312+): Include snippet of CQL query near error in SyntaxError messages
+  sergio
+  vijay
+  jacek
+  rspitzer
+  mikhail
+  mike
+  beobal
+  andrés
+  dmitry
+  blerer
+  reviewed
+  tjake;
+  danield
+  joshuamckenzie
+  marcus
+  nate
+  luca
+  on
+  chander
+  steven
+  jeremiah
+  nicolas
+  michael
+  matt
+  robbie
+  thobbs
+  miguel
+  paulo
+  sbtourist
+  alexey
+  ding
+  slebresne;
+  mstepura
+  sean
+  benedict;
+  kohlisankalp
+  christian
+  nick
+  minh
+  robert
+  brandonwilliams,
+  pavel
+  berenguer
+  cnlwsu
+  graham
+  jlewandowski
+  mariusz
+  patrick
+  ala'
+  mishail
+  pauloricardomg
+  jason
+  yasuharu
+  rlow
+  er
+  yang
+  jbellis;
+  rbranson
+  djatnieks
+  pierre-yves
+  kevin
+  bes;
+  tested
+  normanm
+  holger
+  john
+  nikita
+
+unknown author tickets:
+  benedict
+        ?? (1424+): 
+        6916 (  19+): 
+        7244 (   4+): Don&#39;t allocate a Codec.Flag enum value array on every read
+  iamaleksey
+        ?? ( 676+): 
+        6662 (  12+): Sort/reconcile cells in ArrayBackedSortedColumns only when an accessor is called
+        6876 (   9+): Improve PerRowSecondaryIndex performance by removing O(N) complexity when computing indexes for a column
+        6742 (   3+): Make it safe to concurrently access ABSC after its construction
+        6707 (   2+): AIOOBE when doing select count(*) from on a mixed cluster.
+  jonathan
+        ?? ( 367+): 
+        6734 (   3+): Use correct partitioner in AbstractViewSSTableFinder
+  sylvain
+        ?? ( 116+): 
+        6831 (  69+): Updates to COMPACT STORAGE tables via cli drop CQL information
+        7403 (  23+): Reconciliation doesn&#39;t consider fields specific to expiring cells 
+        6855 (   7+): Reconciliation doesn&#39;t consider fields specific to expiring cells 
+  brandon
+        ?? ( 137+): 
+        7635 (   9+): Make hinted_handoff_throttle_in_kb configurable via nodetool
+        6658 (   8+): Nodes flap once at startup
+        3668 (   6+): Nodes flap once at startup
+        7183 (   5+): BackgroundActivityMonitor.readAndCompute only returns half of the values
+  dave
+        ?? (  74+): 
+        7149 (  51+): SimpleCondition await bug
+        6860 (   5+): Race condition in Batch CLE
+        7257 (   3+): only query once for local host id on join
+        7191 (   3+): reduce needless garbage/thrashing in pending range calculation
+  tyler
+        7525 (  69+): Querying by multiple secondary indexes gives java.lang.IllegalArgumentException on some cases
+        7651 (  18+): Tolerate min/max column names of different lengths for slice intersections
+        6961 (   5+): nodes should go into hibernate when join_ring is false
+        7508 (   5+): nodetool prints error if dirs don&#39;t exist.
+        7454 (   3+): NPE When Prepared Statement ID is not Found
+  yukim
+        ?? (  90+): 
+        6596 (   5+): Split out outgoing stream throughput within a DC and inter-DC
+  vijay
+        6751 (  78+): Setting -Dcassandra.fd_initial_value_ms Results in NPE
+  marcus
+        ?? (   6+): 
+        6958 (   4+): upgradesstables does not maintain levels for existing SSTables
+  brent
+        7198 (   7+): CqlPagingRecordReader throws IllegalStateException
+  peter
+        7253 (   6+): Improve javadoc for KeysIndex
+  jake
+        ?? (   3+): 
+  pavel
+        6689 (   3+): 
+  mikhail
+        6639 (   2+): Update Guava to version 16
+

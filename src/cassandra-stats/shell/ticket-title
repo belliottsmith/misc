@@ -1,0 +1,1 @@
+grep -E '<link rel="search" type="application/opensearchdescription\+xml" href="/jira/osd\.jsp" title="\[CASSANDRA-'$1'\] .* - ASF JIRA"/>' issues.apache.org/jira/browse/CASSANDRA-$1 | sed -r 's@.*title="\[CASSANDRA-'$1'\] (.*) - ASF JIRA.*@\1@g'

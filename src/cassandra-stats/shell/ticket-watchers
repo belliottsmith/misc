@@ -1,0 +1,1 @@
+grep -E '<span id="watcher-data" class="aui-badge watch-state-off">[0-9]+</span>' issues.apache.org/jira/browse/CASSANDRA-$1 | sed -r 's@.*>([0-9]+)<.*@\1@g'

@@ -1,0 +1,43 @@
+\documentclass[fleqn]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage{listings}
+\usepackage{color}
+\usepackage{xcolor}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{setspace}
+\usepackage{multirow}
+\usepackage{algorithm}
+\usepackage{xpatch}
+\let\algIf\If
+\usepackage{zed-csp}
+\let\If\algIf
+\usepackage[noend]{algpseudocode}
+
+\makeatletter
+\def\BState{\State\hskip-\ALG@thistlm}
+\xpatchcmd{\algorithmic}{\itemsep\z@}{\itemsep=0.5ex plus1pt}{}{}
+\algnewcommand{\LineComment}[1]{\Statex \hskip\ALG@thistlm #1}
+\makeatother
+
+\title{Latency Calculation}
+\author{Benedict Elliott Smith}
+\date{January 2015}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+$Actions \triangleq \{ (s_0, e_0) \}$\\
+$Actor_a = (Start, \{(r_0, d_0) \dots (r_N,d_N)\}), $
+$Actor = (Start, Count, ResponseTime, Delay)$
+
+Without delay, $Action_{a,i} = Start_a + (\sum\limits{j=0}^{i-1}(ResponseTime_a(j) + Delay_a(j)} \{ \sum\limits{j=0}^{i-1}(ResponseTime_a(j) + Delay_a(j) \mid 0 <= i < Count_a\}()$
+$Actions = \biguplus_limits_{a \in Actors}()}$
+$Pauses = {}$
+$Actions = \biguplus\limits_{a \in Actors}
+
+\end{document}

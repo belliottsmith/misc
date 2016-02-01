@@ -59,8 +59,9 @@ expectations we have of them, and the manner in which they will be used.
 \subparagraph{}
     One per partition. Located by a $PartitionIndex$ lookup, it stores a translation from \textit{Clustering Columns}
     (here on referred to as $RowKey$) to both a positional key into the $ValueStore$ and a $RowEpoch$. It also
-    stores range tombstones. It will be necessary to support a variable number clustering columns, so that
-    range deletes will be supported when the functionality. This may also be used to encode collection keys. 
+    stores range tombstones. It will be necessary to support a variable number of clustering columns so that
+    range deletes will be supported when the functionality is delivered. This may also be used to encode 
+    collection keys. 
     \\\\
     The contract with the framework is to manage 
     a sequence of bytes that contain its data, indexed from zero. The framework manages the actual persistence 
@@ -105,9 +106,9 @@ $X \Leftarrow Y$ & Write/Add/Append $Y$ To $X$\\
 $X \dashleftarrow Y$ & Read $X$ From $Y$\\
 $X \gets Y$ & Set $X$ to $Y$\\
 $\langle A,B \rangle$ & A tuple containing the values $A$ and $B$\\
-$\{Item | Constraint\}$ & The set of all $Item$ produced by $Constraint$\\
-$S_N$ & $\equiv \{S_n | n \in N\}$\\
-$Stmt_x | \forall x \in X$ & Execute statement $S$ for each $x$ in $X$\\
+$\{Item \mid Constraint\}$ & The set of all $Item$ produced by $Constraint$\\
+$S_N$ & $\equiv \{S_n \mid n \in N\}$\\
+$Stmt_x \mid \forall x \in X$ & Execute statement $S$ for each $x$ in $X$\\
 $\lvert X \rvert$ & $\equiv \mathbf{card}(X)$, i.e. the number of elements in $X$\\
 \end{tabular}
 
@@ -579,9 +580,10 @@ fall into two categories: Ordered and Hashed.
     This translates directly to the sstable representing the 
     bottom three levels of a B\textsuperscript{+}-tree, with the highest remaining resident in memory as our 
     summary, and the middle being the highly cacheable index. For small datasets we could omit the summary level
-    and store the entire index in memory, since the required space will be significantly less than the current
-    situation for the same page size. Only 8 bytes are necessary per page, instead of 16 bytes 
-    + \textsc{Len}($PartitionKey$) at minimum.
+    and store the entire index in memory, since the required space for the same page size will be significantly 
+    lower than the current approach. Only 8 bytes are necessary per page, instead of 16 bytes 
+    + \textsc{Len}($PartitionKey$) per partition. If we pack $P$ partitions per page, this translates
+    to a minimum fraction of \tiny$\dfrac{1}{2P}$\small, with \tiny$\dfrac{1}{4P}$\small for $UUID$ partition keys.
     
 \paragraph{Hashed}
 \paragraph{}
